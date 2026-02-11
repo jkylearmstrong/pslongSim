@@ -7,6 +7,8 @@ ps_recipe <- function(df,
                       outcome = "Compliant",
                       formula = as.formula("Compliant ~ Treatment + VisitNumber + Age + GenderMale + SideEffect + Biomarker")) {
   stopifnot(outcome %in% names(df))
+  # Classification models require the outcome to be a factor
+  df[[outcome]] <- as.factor(df[[outcome]])
   recipes::recipe(formula, data = df) |>
     recipes::step_dummy(recipes::all_nominal_predictors()) |>
     recipes::step_zv(recipes::all_predictors()) |>

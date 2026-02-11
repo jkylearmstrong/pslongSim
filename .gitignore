@@ -2,3 +2,8 @@
 .Rhistory
 .RData
 .Ruserdata
+
+# Simulation logs
+tar_make_error*.txt
+installed_packages.txt
+tar_make_attempt*.txt
