@@ -20,17 +20,21 @@ ps_recipe <- function(df,
 #' Model spec factory for PS
 #' @param model One of "glm","xgboost","ranger".
 #' @export
-ps_model_spec <- function(model = c("glm","xgboost","ranger")) {
+ps_model_spec <- function(model = c("glm","xgboost","ranger"), tune = FALSE) {
   model <- match.arg(model)
   if (model == "glm") {
     parsnip::logistic_reg() |>
       parsnip::set_engine("glm")
   } else if (model == "xgboost") {
-    parsnip::boost_tree(trees = 500, learn_rate = 0.05, mtry = tune::tune(), tree_depth = 4) |>
+    spec <- parsnip::boost_tree(trees = 500, learn_rate = 0.05, tree_depth = 4)
+    if (tune) spec <- parsnip::set_args(spec, mtry = tune::tune())
+    spec |>
       parsnip::set_mode("classification") |>
       parsnip::set_engine("xgboost")
   } else {
-    parsnip::rand_forest(trees = 1000, mtry = tune::tune(), min_n = 10) |>
+    spec <- parsnip::rand_forest(trees = 1000, min_n = 10)
+    if (tune) spec <- parsnip::set_args(spec, mtry = tune::tune())
+    spec |>
       parsnip::set_mode("classification") |>
       parsnip::set_engine("ranger", probability = TRUE)
   }
@@ -56,7 +60,7 @@ fit_ps_tidymodels <- function(df,
     df[[outcome]] <- as.factor(df[[outcome]])
   }
   rec <- ps_recipe(df)
-  spec <- ps_model_spec(model)
+  spec <- ps_model_spec(model, tune = tune_ps)
   wf <- workflows::workflow() |>
     workflows::add_model(spec) |>
     workflows::add_recipe(rec)
