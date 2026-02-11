@@ -1,3 +1,7 @@
+# pslongSim 0.1.2
+
+* Updated maintainer email to `j.kyle.armstrong@temple.edu` in `DESCRIPTION`.
+
 # pslongSim 0.1.1
 
 * Fixed classification outcome error in `fit_ps_tidymodels()` by ensuring `Compliant` is converted to a factor.

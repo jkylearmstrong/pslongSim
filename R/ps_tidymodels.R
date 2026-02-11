@@ -74,7 +74,7 @@ fit_ps_tidymodels <- function(df,
     }
     tune_res <- tune::tune_grid(
       wf, resamples = resamples,
-      grid = if (is.numeric(grid)) tune::grid_regular(tune::mtry(), levels = grid) else grid,
+      grid = if (is.numeric(grid)) dials::grid_regular(dials::mtry(), levels = grid) else grid,
       control = tune::control_grid(save_pred = TRUE, verbose = FALSE),
       metrics = yardstick::metric_set(yardstick::roc_auc)
     )
