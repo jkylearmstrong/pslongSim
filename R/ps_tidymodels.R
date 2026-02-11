@@ -8,7 +8,9 @@ ps_recipe <- function(df,
                       formula = as.formula("Compliant ~ Treatment + VisitNumber + Age + GenderMale + SideEffect + Biomarker")) {
   stopifnot(outcome %in% names(df))
   # Classification models require the outcome to be a factor
-  df[[outcome]] <- as.factor(df[[outcome]])
+  if (!is.factor(df[[outcome]])) {
+    df[[outcome]] <- as.factor(df[[outcome]])
+  }
   recipes::recipe(formula, data = df) |>
     recipes::step_dummy(recipes::all_nominal_predictors()) |>
     recipes::step_zv(recipes::all_predictors()) |>
@@ -48,6 +50,11 @@ fit_ps_tidymodels <- function(df,
                               resamples = NULL,
                               grid = 20L) {
   model <- match.arg(model)
+  # Ensure outcome is a factor for classification
+  outcome <- "Compliant"
+  if (!is.factor(df[[outcome]])) {
+    df[[outcome]] <- as.factor(df[[outcome]])
+  }
   rec <- ps_recipe(df)
   spec <- ps_model_spec(model)
   wf <- workflows::workflow() |>
@@ -72,6 +79,7 @@ fit_ps_tidymodels <- function(df,
   }
 
   # Predict propensity score (P(Compliant=1))
+  # Ensure the data passed to predict also has the factor outcome
   preds <- predict(fit, new_data = df, type = "prob")
   ps_hat <- as.numeric(preds$.pred_1)
   list(workflow = wf, fit = fit, ps_hat = ps_hat)
