@@ -1,4 +1,10 @@
 #' Generate Demographics
+#' @param num_patients Total number of patients.
+#' @param seed Random seed.
+#' @param n_cohorts Number of treatment cohorts.
+#' @param age_range Range of patient ages.
+#' @param gender_levels Levels for gender variable.
+#' @param treatment_prefix Prefix for treatment names.
 #' @export
 generate_patient_data_demographic <- function(
     num_patients = 1000,

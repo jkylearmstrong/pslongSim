@@ -1,5 +1,8 @@
 #' Compute Stabilized IPTW for Binary Compliance
 #' @param df Data frame with columns: Compliant, VisitNumber, ps_hat.
+#' @param c_var Name of compliance variable.
+#' @param ps_var Name of propensity score variable.
+#' @param visit_var Name of visit number variable.
 #' @param truncate Trimming quantiles.
 #' @export
 compute_stabilized_iptw <- function(df,
@@ -25,6 +28,7 @@ compute_stabilized_iptw <- function(df,
 }
 
 #' Fit GEE MSM for Continuous Outcomes
+#' @param df_w Weighted data frame.
 #' @export
 fit_msm_gee_cont <- function(df_w) {
   if (!requireNamespace("geepack", quietly = TRUE)) stop("Install geepack")
@@ -40,6 +44,7 @@ fit_msm_gee_cont <- function(df_w) {
 }
 
 #' Fit GEE MSM for Binary Outcomes
+#' @param df_w Weighted data frame.
 #' @export
 fit_msm_gee_bin <- function(df_w) {
   if (!requireNamespace("geepack", quietly = TRUE)) stop("Install geepack")
@@ -55,6 +60,7 @@ fit_msm_gee_bin <- function(df_w) {
 }
 
 #' Fit Cox MSM (Start-Stop Intervals) with Robust SEs
+#' @param tte_ivl_w Weighted TTE interval data.
 #' @export
 fit_msm_cox <- function(tte_ivl_w) {
   if (!requireNamespace("survival", quietly = TRUE)) stop("Install survival")

@@ -19,6 +19,7 @@ ps_recipe <- function(df,
 
 #' Model spec factory for PS
 #' @param model One of "glm","xgboost","ranger".
+#' @param tune Logical; if TRUE, uses tune() placeholders for parameters.
 #' @export
 ps_model_spec <- function(model = c("glm","xgboost","ranger"), tune = FALSE) {
   model <- match.arg(model)
@@ -73,7 +74,7 @@ fit_ps_tidymodels <- function(df,
     }
     tune_res <- tune::tune_grid(
       wf, resamples = resamples,
-      grid = if (is.numeric(grid)) tune::grid_regular(levels = grid) else grid,
+      grid = if (is.numeric(grid)) tune::grid_regular(tune::mtry(), levels = grid) else grid,
       control = tune::control_grid(save_pred = TRUE, verbose = FALSE),
       metrics = yardstick::metric_set(yardstick::roc_auc)
     )

@@ -19,33 +19,56 @@ knitr::opts_chunk$set(
 # pslongSim
 
 <!-- badges: start -->
-
 <!-- badges: end -->
 
-The goal of pslongSim is to
+The goal of **pslongSim** is to provide a robust simulation framework for evaluating propensity score methods for adjustment of time-varying non-adherence in longitudinal randomized clinical trials.
 
-# Abstract Body
+## Installation
 
-**Introduction:** Non-adherence in randomized clinical trials (RCT) is
-measured using self-report, pill counts and blood levels. In
-longitudinal RCTs, the question arises how to analyze adherence when it
-changes over time. Intent-to-treat (ITT) includes all randomized
-patients, while per-protocol (PP) includes only compliant patients. Both
-may introduce bias by not measuring true biological effect. Propensity
-scores (PS) address confounding but have not been adapted for
-non-adherence in longitudinal RCTs. We defined PS of adherence as
-probability of being a completer (\>80% adherence) conditional on
-covariates, then used these to adjust for non-adherence.
+You can install the development version of pslongSim from [GitHub](https://github.com/jkylearmstrong/pslongSim) with:
 
-# Methods
+```r
+# install.packages("devtools")
+devtools::install_github("jkylearmstrong/pslongSim")
+```
 
-We developed a machine learning-enhanced propensity score framework for
-time-varying non adherence. PS were estimated using: 
+## Running the Simulation
 
-1.  logistic regression, 
+This project uses the `targets` R package for pipeline management. To run the full simulation suite:
 
-2.  gradient boosting (XGBoost) for non-linear relationships, and 
+1.  Ensure all dependencies are installed (managed via `renv`).
+2.  Run the following command in the R console:
 
-3.  random forests for complex interactions.
+```r
+targets::tar_make()
+```
 
-A pseudo dataset was analyzed with linear mixed-effects models. We compared ML-based PS against traditional methods in simulations where non adherence was related to outcome at varying strengths, and applied our method to a longitudinal RCT among adolescent kidney transplant recipients.
+This will:
+- Generate synthetic patient demographics and longitudinal data (binary, continuous, and time-to-event).
+- Fit propensity score models using GLM, Random Forest, and XGBoost.
+- Compute stabilized IPTW weights.
+- Fit Marginal Structural Models (MSM) and summarize results.
+
+## Modifying the Experiment
+
+You can modify the simulation parameters by editing the `_targets.R` file:
+
+- **Sample Size**: Change `n_patients` and `n_visits` at the top of the file.
+- **Treatment Effects**: Adjust the `adh_shift`, `out_effect`, `logHR`, and `se_shift` parameters within the `trt_map` target.
+- **Models**: Switch between different machine learning models in the PS targets (`ps_cont`, `ps_bin`, `ps_tte`).
+
+## R Package Structure
+
+- `R/`: Contains the core simulation and analysis functions.
+- `tests/`: Unit tests for ensuring reliability.
+- `_targets.R`: Defines the simulation pipeline.
+
+## Results Summary
+
+After running `tar_make()`, you can inspect the results using:
+
+```r
+targets::tar_read(summary_cont)
+targets::tar_read(summary_bin)
+targets::tar_read(summary_cox)
+```
