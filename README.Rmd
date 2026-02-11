@@ -1,0 +1,51 @@
+---
+output: github_document
+editor_options: 
+  markdown: 
+    wrap: 72
+---
+
+<!-- README.md is generated from README.Rmd. Please edit that file -->
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.path = "man/figures/README-",
+  out.width = "100%"
+)
+```
+
+# pslongSim
+
+<!-- badges: start -->
+
+<!-- badges: end -->
+
+The goal of pslongSim is to
+
+# Abstract Body
+
+**Introduction:** Non-adherence in randomized clinical trials (RCT) is
+measured using self-report, pill counts and blood levels. In
+longitudinal RCTs, the question arises how to analyze adherence when it
+changes over time. Intent-to-treat (ITT) includes all randomized
+patients, while per-protocol (PP) includes only compliant patients. Both
+may introduce bias by not measuring true biological effect. Propensity
+scores (PS) address confounding but have not been adapted for
+non-adherence in longitudinal RCTs. We defined PS of adherence as
+probability of being a completer (\>80% adherence) conditional on
+covariates, then used these to adjust for non-adherence.
+
+# Methods
+
+We developed a machine learning-enhanced propensity score framework for
+time-varying non adherence. PS were estimated using: 
+
+1.  logistic regression, 
+
+2.  gradient boosting (XGBoost) for non-linear relationships, and 
+
+3.  random forests for complex interactions.
+
+A pseudo dataset was analyzed with linear mixed-effects models. We compared ML-based PS against traditional methods in simulations where non adherence was related to outcome at varying strengths, and applied our method to a longitudinal RCT among adolescent kidney transplant recipients.

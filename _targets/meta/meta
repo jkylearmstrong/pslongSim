@@ -1,0 +1,5 @@
+name|type|data|command|depend|seed|path|time|size|bytes|format|repository|iteration|parent|children|seconds|warnings|error
+n_visits|object|943cd151fa74649e
+seed_base|object|4b8caeb2425c3113
+n_patients|object|126c5e4233441e72
+demo|stem||e79de31122154272|c0b6eb837f3ed1c9|92079474||t20495.383515176s||0|rds|local|vector|||4.56|no non-missing arguments to max; returning -Inf|could not find packages pslongSim in library paths
