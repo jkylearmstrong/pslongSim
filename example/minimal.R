@@ -1,5 +1,8 @@
 library(pslongSim)
 
+# The repository-level targets pipeline is also available through
+# make_default_simulation_targets() for larger simulation runs.
+
 set.seed(1)
 demo <- generate_patient_data_demographic(num_patients = 400, n_cohorts = 3)
 trt_map <- define_treatment_map(
