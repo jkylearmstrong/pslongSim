@@ -1,0 +1,140 @@
+---
+title: "Longitudinal Propensity Score Analysis: Method Comparison"
+geometry: margin=1in
+author: 
+- name: J Kyle Armstrong, PhD
+date: today
+format:
+  pdf:
+    toc: true
+    number-sections: true
+    pdf-engine: pdflatex
+---
+
+```{r}
+#| label: setup
+#| echo: false
+#| message: false
+
+library(targets)
+library(tidyverse)
+library(knitr)
+library(MLPScore)
+
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
+
+# Load targets
+# Load targets dynamically depending on working directory
+if (dir.exists("../../_targets")) {
+    tar_config_set(store = "../../_targets")
+} else {
+    tar_config_set(store = "../_targets")
+}
+tar_load(base_params)
+tar_load(all_results)
+tar_load(fig1)
+tar_load(fig2)
+tar_load(fig3)
+tar_load(fig4)
+tar_load(fig5)
+tar_load(fig6)
+tar_load(fig7)
+
+# Prepare true effects for plotting
+# Derive Term names dynamically (e.g., TreatmentTreatment_2) to match model output
+rterm_levels <- unique(all_results$Term)
+true_effects_df <- data.frame(
+    Term = rterm_levels,
+    True_Effect = sapply(rterm_levels, function(x) {
+        if (grepl("Treatment_2", x)) {
+            return(as.numeric(base_params$trt2_outcome_effect))
+        }
+        if (grepl("Treatment_3", x)) {
+            return(as.numeric(base_params$trt3_outcome_effect))
+        }
+        return(0)
+    })
+)
+```
+
+## Objective
+
+This report compares treatment effect estimates across various analytic strategies and scenarios of confounding ($\\rho_{uv}$). We explore variations of the populations (Intention-to-Treat (ITT), Per-Protocol (PP), and Propensity Score Matching (PSM)) across both visit-level and patient-level adherence.
+
+### Outcome Type Interpretations
+
+The simulation framework dynamically adapts to the selected outcome type (`r if (!is.null(base_params$outcome_type)) base_params$outcome_type else "continuous"`). Depending on the configuration, the results in this report should be interpreted as follows:
+
+*   **Continuous Outcomes:** Treatment effects are modeled using standard linear/mixed-effects models. The `Estimate` (and Bias) represents the absolute difference in expected means between the treatments.
+*   **Binary Outcomes:** Treatment effects are modeled using logistic regression with binomial link functions. The `Estimate` (and Bias) is interpreted on the log-odds scale, and the estimates represent log-odds ratios.
+
+\clearpage
+## Representative Scenario (Rho=0.5, Adherence ~75%)
+
+### Patient Level Comparisons
+```{r fig-1-2}
+fig1
+fig2
+```
+
+### Observation Level Comparisons
+```{r fig-3}
+fig3
+```
+
+\clearpage
+## Method Comparison (Pooled)
+
+Below we compare the estimated treatment effects across all scenarios.
+
+```{r analysis}
+all_results %>%
+    group_by(Level, Method, Term) %>%
+    summarize(
+        Mean_Estimate = mean(Estimate),
+        SD_Estimate = sd(Estimate),
+        .groups = "drop"
+    ) %>%
+    arrange(Term, Level, Method) %>%
+    kable(caption = "Averaged Treatment Effects Across Scenarios (including Twang)", digits = 3)
+```
+
+\clearpage
+## Visualizing Bias and Coverage
+
+### Bias vs Confounding Strength (Rho Sweep)
+```{r fig-4-5}
+fig4
+fig5
+```
+
+### Bias vs Observed Adherence Rate (Adherence Sweep)
+```{r fig-6-7}
+fig6
+fig7
+```
+
+\clearpage
+## Longitudinal Estimates Distribution
+
+Grouping by $\rho_{uv}$ to see how estimates distribute relative to truth.
+
+```{r plot-rho}
+all_results %>%
+    left_join(true_effects_df, by = "Term") %>%
+    ggplot(aes(x = as.factor(rho_uv), y = Estimate, color = Method)) +
+    geom_boxplot() +
+    facet_wrap(~ Level + Term, scales = "free_y") +
+    geom_hline(aes(yintercept = True_Effect), linetype = "dashed", alpha = 0.5) +
+    labs(
+        title = "Treatment Effect Estimates by Confounding Strength",
+        x = "Rho_uv (Confounding Strength)",
+        y = "Estimate"
+    ) +
+    theme_minimal()
+```
+
+\clearpage
+## Discussion
+
+Machine learning PS methods (GBM, XGBoost, RF) along with `twang` are evaluated against parametric GLM and naive ITT/PP approaches. As $\\rho_{uv}$ increases, the selection bias in PP approaches typically grows, while PS methods attempt to recover the true effect. The analysis confirms that understanding the adherence-outcome correlation is critical in deciding the appropriate analytic approach, especially in the context of the specific outcome type evaluated.

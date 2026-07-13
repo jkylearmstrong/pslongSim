@@ -1,0 +1,17 @@
+\usepackage{fancyhdr}
+\usepackage{graphicx}
+\usepackage{transparent}
+\usepackage{eso-pic}
+\pagestyle{fancy}
+\fancyhf{}
+\fancyfoot[L]{
+  \AddToShipoutPictureFG*{
+    \AtPageLowerLeft{
+      \raisebox{\footskip}{
+        \transparent{0.5}\includegraphics[height=2cm, keepaspectratio]{Temple_CBE_Logo.png}
+      }
+    }
+  }
+}
+\renewcommand{\headrulewidth}{0pt}
+\renewcommand{\footrulewidth}{0pt}
