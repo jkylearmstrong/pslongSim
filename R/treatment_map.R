@@ -37,7 +37,7 @@ define_treatment_map <- function(levels,
   params <- list(adh_shift = adh_shift, out_effect = out_effect,
                  logHR = logHR, se_shift = se_shift)
   for (nm in names(params)) {
-    if (length(params[[nm]]) != L) {
+    if (length(params[[nm]]) > 1L && length(params[[nm]]) != L) {
       warning(nm, " has length ", length(params[[nm]]),
               " but ", L, " treatment levels were specified; values will be recycled.",
               call. = FALSE)

@@ -54,6 +54,15 @@ compute_stabilized_iptw <- function(df,
 #'
 #' @param df Data frame with an \code{AtRisk} column.
 #' @return Filtered data frame.
+#' @seealso \code{\link{generate_longitudinal_data}},
+#'   \code{\link{fit_msm_cox}}
+#' @examples
+#' demo <- generate_patient_data_demographic(num_patients = 50, seed = 1)
+#' trt_map <- suppressWarnings(define_treatment_map(levels(demo$Treatment)))
+#' tte <- generate_longitudinal_data(demo, num_visits = 5, trt_map = trt_map,
+#'                                   outcome_type = "tte")
+#' nrow(tte$tte_intervals)
+#' nrow(filter_at_risk(tte$tte_intervals))
 #' @export
 filter_at_risk <- function(df) {
   validate_columns(df, "AtRisk", "filter_at_risk")
@@ -82,26 +91,7 @@ filter_at_risk <- function(df) {
 #' summary(msm)
 #' @export
 fit_msm_gee_cont <- function(df_w) {
-  require_suggested("geepack")
-  validate_columns(df_w, c("Outcome", "Treatment", "VisitNumber",
-                            "PatientID", "w"), "fit_msm_gee_cont")
-  validate_min_rows(df_w, 10L, "fit_msm_gee_cont")
-
-  result <- tryCatch({
-    geepack::geeglm(
-      Outcome ~ Treatment + VisitNumber,
-      id      = PatientID,
-      weights = w,
-      family  = gaussian(),
-      corstr  = "independence",
-      data    = df_w,
-      std.err = "san.se"
-    )
-  }, error = function(e) {
-    stop("fit_msm_gee_cont: GEE model failed to converge: ", e$message,
-         call. = FALSE)
-  })
-  result
+  .fit_msm_gee(df_w, family = gaussian(), fn_name = "fit_msm_gee_cont")
 }
 
 #' Fit GEE MSM for Binary Outcomes
@@ -113,28 +103,42 @@ fit_msm_gee_cont <- function(df_w) {
 #' @param df_w Weighted data frame with columns \code{Outcome},
 #'   \code{Treatment}, \code{VisitNumber}, \code{PatientID}, and \code{w}.
 #' @return A \code{geeglm} object.
+#' @seealso \code{\link{compute_stabilized_iptw}},
+#'   \code{\link{fit_msm_gee_cont}}, \code{\link{fit_msm_cox}}
+#' @examples
+#' demo <- generate_patient_data_demographic(num_patients = 50, seed = 1)
+#' trt_map <- suppressWarnings(define_treatment_map(levels(demo$Treatment)))
+#' dat <- generate_longitudinal_data(demo, num_visits = 4, trt_map = trt_map,
+#'                                   outcome_type = "binary")
+#' ps <- fit_ps_tidymodels(dat, model = "glm")
+#' dat$ps_hat <- ps$ps_hat
+#' dat_w <- compute_stabilized_iptw(dat)
+#' msm <- fit_msm_gee_bin(dat_w)
+#' summary(msm)
 #' @export
 fit_msm_gee_bin <- function(df_w) {
-  require_suggested("geepack")
-  validate_columns(df_w, c("Outcome", "Treatment", "VisitNumber",
-                            "PatientID", "w"), "fit_msm_gee_bin")
-  validate_min_rows(df_w, 10L, "fit_msm_gee_bin")
+  .fit_msm_gee(df_w, family = binomial(), fn_name = "fit_msm_gee_bin")
+}
 
-  result <- tryCatch({
+#' @keywords internal
+.fit_msm_gee <- function(df_w, family, fn_name) {
+  validate_columns(df_w, c("Outcome", "Treatment", "VisitNumber",
+                           "PatientID", "w"), fn_name)
+  validate_min_rows(df_w, 10L, fn_name)
+  tryCatch({
     geepack::geeglm(
       Outcome ~ Treatment + VisitNumber,
       id      = PatientID,
       weights = w,
-      family  = binomial(),
+      family  = family,
       corstr  = "independence",
       data    = df_w,
       std.err = "san.se"
     )
   }, error = function(e) {
-    stop("fit_msm_gee_bin: GEE model failed to converge: ", e$message,
+    stop(fn_name, ": GEE model failed to converge: ", e$message,
          call. = FALSE)
   })
-  result
 }
 
 #' Fit Cox MSM (Start-Stop Intervals) with Robust SEs
@@ -161,7 +165,6 @@ fit_msm_gee_bin <- function(df_w) {
 #' summary(cox_m)
 #' @export
 fit_msm_cox <- function(tte_ivl_w) {
-  require_suggested("survival")
   validate_columns(tte_ivl_w, c("tstart", "tstop", "event",
                                  "Treatment", "PatientID", "w"),
                    "fit_msm_cox")

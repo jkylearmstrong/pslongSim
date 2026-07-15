@@ -1,3 +1,30 @@
+# pslongSim 0.3.3
+
+## Improvements
+
+* **Recycling warning silenced for scalar defaults**: `define_treatment_map()`
+  no longer warns when a scalar default (e.g., `adh_shift = 0`) is recycled
+  to match multiple treatment levels.  Only length > 1 mismatches trigger
+  warnings.
+* **Extracted `.fit_msm_gee()` internal helper**: `fit_msm_gee_cont()` and
+  `fit_msm_gee_bin()` are now thin wrappers around a shared function,
+  eliminating the duplicated GEE/tryCatch/validation code.
+* **Removed redundant `require_suggested()` calls**: `geepack` and `survival`
+  are in `Imports` (always installed), so the guards were unnecessary.
+* **`@examples` added** to `fit_msm_gee_bin()` and `filter_at_risk()`.
+* **`@seealso` cross-references** added to `fit_msm_gee_bin()` and
+  `filter_at_risk()`.
+* **Test skip guards**: `skip_if_not_installed("xgboost")`,
+  `skip_if_not_installed("ranger")`, and
+  `skip_if_not_installed("randomForest")` added to relevant tests so
+  the suite passes without those optional packages.
+
+## Documentation
+
+* Vignette expanded with binary outcome, TTE/Cox MSM, and Ranger PS
+  model sections.
+* README updated with adherence model description (beta vs binary).
+
 # pslongSim 0.3.2
 
 ## Improvements

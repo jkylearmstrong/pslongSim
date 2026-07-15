@@ -52,11 +52,14 @@ test_that("fit_ps_tidymodels errors on non-binary outcome", {
 
 test_that("ps_model_spec produces valid specs for all models", {
   expect_s3_class(ps_model_spec("glm"), "logistic_reg")
+  skip_if_not_installed("xgboost")
   expect_s3_class(ps_model_spec("xgboost"), "boost_tree")
+  skip_if_not_installed("ranger")
   expect_s3_class(ps_model_spec("ranger"), "rand_forest")
 })
 
 test_that("ps_model_spec tune parameter works", {
+  skip_if_not_installed("xgboost")
   spec_tuned <- ps_model_spec("xgboost", tune = TRUE)
   expect_s3_class(spec_tuned, "boost_tree")
 })

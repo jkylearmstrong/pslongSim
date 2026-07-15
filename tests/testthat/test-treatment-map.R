@@ -24,8 +24,11 @@ test_that("define_treatment_map warns on recycling", {
   )
 })
 
-test_that("define_treatment_map recycles scalar defaults", {
-  map <- suppressWarnings(define_treatment_map(levels = c("A", "B")))
+test_that("define_treatment_map recycles scalar defaults without warning", {
+  expect_warning(
+    map <- define_treatment_map(levels = c("A", "B")),
+    NA
+  )
   expect_equal(map$adh_shift, c(0, 0))
   expect_equal(map$out_effect, c(0, 0))
 })

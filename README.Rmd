@@ -65,6 +65,9 @@ You can modify the simulation parameters by editing the
   and `se_shift`.
 - **Models**: Switch between different ML models with the `ps_models`
   argument.
+- **Adherence model**: Set `adherence_type = "beta"` for continuous
+  [0,1] adherence or `"binary"` for 0/1 compliance.  Beta adherence
+  produces more realistic dose-response patterns.
 
 ## Non-Linear Feature
 

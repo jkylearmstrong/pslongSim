@@ -15,3 +15,15 @@ Filtered data frame.
 \description{
 Subsets a data frame to rows where the \code{AtRisk} column equals 1.
 }
+\examples{
+demo <- generate_patient_data_demographic(num_patients = 50, seed = 1)
+trt_map <- suppressWarnings(define_treatment_map(levels(demo$Treatment)))
+tte <- generate_longitudinal_data(demo, num_visits = 5, trt_map = trt_map,
+                                  outcome_type = "tte")
+nrow(tte$tte_intervals)
+nrow(filter_at_risk(tte$tte_intervals))
+}
+\seealso{
+\code{\link{generate_longitudinal_data}},
+  \code{\link{fit_msm_cox}}
+}

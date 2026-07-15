@@ -1,5 +1,6 @@
 test_that("non-linear feature is undetectable by linear regression", {
   skip_on_cran()
+  skip_if_not_installed("randomForest")
   set.seed(42)
   n <- 2000
   demo <- generate_patient_data_demographic(num_patients = n, n_cohorts = 3)

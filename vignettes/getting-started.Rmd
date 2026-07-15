@@ -69,6 +69,51 @@ msm <- fit_msm_gee_cont(dat_w)
 summary(msm)
 ```
 
+## Binary Outcome with GEE MSM
+
+For binary outcomes, use `outcome_type = "binary"` and
+`fit_msm_gee_bin()`:
+
+```{r}
+dat_bin <- generate_longitudinal_data(
+  demo, num_visits = 6, trt_map = trt_map,
+  adherence_type = "binary", outcome_type = "binary"
+)
+ps_bin <- fit_ps_tidymodels(dat_bin, model = "glm")
+dat_bin$ps_hat <- ps_bin$ps_hat
+dat_bin_w <- compute_stabilized_iptw(dat_bin)
+msm_bin <- fit_msm_gee_bin(dat_bin_w)
+summary(msm_bin)
+```
+
+## Time-to-Event with Cox MSM
+
+For time-to-event outcomes, use `outcome_type = "tte"` and
+`fit_msm_cox()`:
+
+```{r}
+tte <- generate_longitudinal_data(
+  demo, num_visits = 8, trt_map = trt_map,
+  adherence_type = "binary", outcome_type = "tte"
+)
+ivl <- filter_at_risk(tte$tte_intervals)
+ps_tte <- fit_ps_tidymodels(ivl, model = "glm")
+ivl$ps_hat <- ps_tte$ps_hat
+ivl_w <- compute_stabilized_iptw(ivl)
+cox_m <- fit_msm_cox(ivl_w)
+summary(cox_m)
+```
+
+## Random Forest Propensity Scores
+
+Use `model = "ranger"` for random forest PS estimation (requires the
+`ranger` package):
+
+```{r eval=requireNamespace("ranger", quietly=TRUE)}
+ps_rf <- fit_ps_tidymodels(dat, model = "ranger")
+cat("RF PS range:", range(ps_rf$ps_hat), "\n")
+```
+
 ## Non-Linear Feature Detection
 
 One of pslongSim's key features is the ability to generate data with
@@ -145,6 +190,7 @@ cat("NL columns:", paste(grep("^NL_", names(dat_multi), value = TRUE), collapse 
 The full simulation workflow is packaged as a `targets` pipeline:
 
 ```{r eval=FALSE}
+library(pslongSim)
 # Requires the 'targets' package
 targets::tar_make()
 
