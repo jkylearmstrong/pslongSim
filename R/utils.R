@@ -4,6 +4,9 @@
 #'
 #' @param x Numeric vector.
 #' @return Numeric vector of probabilities.
+#' @examples
+#' inv_logit(0)
+#' inv_logit(c(-2, 0, 2))
 #' @export
 inv_logit <- function(x) 1 / (1 + exp(-x))
 
@@ -15,6 +18,9 @@ inv_logit <- function(x) 1 / (1 + exp(-x))
 #' @param lower Lower bound (must be <= upper).
 #' @param upper Upper bound (must be >= lower).
 #' @return Numeric vector with values clamped to \code{[lower, upper]}.
+#' @examples
+#' clamp(c(-1, 5, 3), 0, 4)
+#' clamp(0.5, 0, 1)
 #' @export
 clamp <- function(x, lower, upper) {
   if (lower > upper) {

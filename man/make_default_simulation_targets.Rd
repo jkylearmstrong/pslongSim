@@ -61,3 +61,10 @@ Constructs a list of \code{targets::tar_target()} objects representing
 the full longitudinal PS simulation workflow: data generation, propensity
 score estimation, IPTW weighting, MSM fitting, and summarisation.
 }
+\examples{
+\donttest{
+# Requires the 'targets' package
+targets <- make_default_simulation_targets(num_patients = 10)
+length(targets)
+}
+}

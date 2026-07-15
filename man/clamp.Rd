@@ -19,3 +19,7 @@ Numeric vector with values clamped to \code{[lower, upper]}.
 \description{
 Constrains a numeric vector to lie within \code{[lower, upper]}.
 }
+\examples{
+clamp(c(-1, 5, 3), 0, 4)
+clamp(0.5, 0, 1)
+}

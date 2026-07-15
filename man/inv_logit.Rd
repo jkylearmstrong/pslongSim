@@ -15,3 +15,7 @@ Numeric vector of probabilities.
 \description{
 Computes the inverse logit (logistic) transformation.
 }
+\examples{
+inv_logit(0)
+inv_logit(c(-2, 0, 2))
+}

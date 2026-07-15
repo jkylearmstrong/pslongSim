@@ -2,6 +2,7 @@
 ^renv\.lock$
 ^.*\.Rproj$
 ^\.Rproj\.user$
+^\.Rprofile$
 ^README\.Rmd$
 ^README\.html$
 ^README_files$

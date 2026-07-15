@@ -32,5 +32,6 @@ summary(cox_m)
 }
 \seealso{
 \code{\link{compute_stabilized_iptw}},
-  \code{\link{fit_msm_gee_cont}}, \code{\link{filter_at_risk}}
+  \code{\link{fit_msm_gee_cont}}, \code{\link{fit_msm_gee_bin}},
+  \code{\link{filter_at_risk}}
 }

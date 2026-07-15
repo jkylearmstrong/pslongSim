@@ -1,3 +1,19 @@
+# pslongSim 0.3.4
+
+## Bug Fixes
+
+* Added `.Rprofile` to `.Rbuildignore` — prevents `R CMD build` from
+  including the renv activation script (which would fail on install
+  because `renv/activate.R` is excluded).
+
+## Documentation
+
+* Added `@examples` to `inv_logit()`, `clamp()`, and
+  `make_default_simulation_targets()` (all remaining exported functions
+  without examples).
+* Fixed `fit_msm_cox()` `@seealso` to include `fit_msm_gee_bin()`
+  (was missing from the cross-reference triangle).
+
 # pslongSim 0.3.3
 
 ## Improvements

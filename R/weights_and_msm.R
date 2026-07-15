@@ -151,7 +151,8 @@ fit_msm_gee_bin <- function(df_w) {
 #'   \code{PatientID}, and \code{w}.
 #' @return A \code{coxph} object.
 #' @seealso \code{\link{compute_stabilized_iptw}},
-#'   \code{\link{fit_msm_gee_cont}}, \code{\link{filter_at_risk}}
+#'   \code{\link{fit_msm_gee_cont}}, \code{\link{fit_msm_gee_bin}},
+#'   \code{\link{filter_at_risk}}
 #' @examples
 #' demo <- generate_patient_data_demographic(num_patients = 50, seed = 1)
 #' trt_map <- suppressWarnings(define_treatment_map(levels(demo$Treatment)))
