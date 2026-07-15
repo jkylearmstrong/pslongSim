@@ -1,3 +1,11 @@
+# pslongSim 0.2.0
+
+* Packaged the default longitudinal propensity score simulation pipeline as a reusable function `make_default_simulation_targets()`.
+* Streamlined the repository-level `_targets.R` configuration file to invoke the packaged pipeline directly.
+* Configured GitHub Actions CI workflow to verify package integrity and run unit tests on push and pull requests on modern R releases.
+* Updated `.Rbuildignore` to ignore top-level development and pipeline directories (like `_targets/` and `mlpscore_pipeline/`) to ensure clean packages.
+* Updated unit tests to verify the pipeline builder structure.
+
 # pslongSim 0.1.2
 
 * Updated maintainer email to `j.kyle.armstrong@temple.edu` in `DESCRIPTION`.

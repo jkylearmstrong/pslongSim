@@ -1,7 +1,7 @@
 Package: pslongSim
 Type: Package
 Title: pslongSim: Longitudinal Propensity Score Simulation
-Version: 0.1.2
+Version: 0.2.0
 Authors@R: person(
     "J Kyle", "Armstrong",
     role = c("aut", "cre"),
@@ -36,4 +36,4 @@ VignetteBuilder: knitr
 Config/testthat/edition: 3
 URL: https://github.com/jkylearmstrong/pslongSim
 BugReports: https://github.com/jkylearmstrong/pslongSim/issues
-RoxygenNote: 7.2.3
+Config/roxygen2/version: 8.0.0

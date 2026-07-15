@@ -3,3 +3,11 @@
 ^.*\.Rproj$
 ^\.Rproj\.user$
 ^README\.Rmd$
+^README\.html$
+^README_files$
+^_targets$
+^_targets\.R$
+^example$
+^mlpscore_pipeline$
+^docs$
+^\.github$
