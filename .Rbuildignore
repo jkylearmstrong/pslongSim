@@ -11,3 +11,5 @@
 ^mlpscore_pipeline$
 ^docs$
 ^\.github$
+^_pkgdown\.yml$
+^pslongSim_.*\.tar\.gz$

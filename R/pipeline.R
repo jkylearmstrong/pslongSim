@@ -13,8 +13,10 @@
 #' @param ps_models Named list with elements \code{continuous},
 #'   \code{binary}, and \code{tte}; each must be one of \code{"glm"},
 #'   \code{"ranger"}, or \code{"xgboost"}.
-#' @param non_linear_feature Logical; whether to include the Age x
-#'   SideEffect interaction in data generation.
+#' @param non_linear_feature Logical; whether to include interaction terms
+#'   in data generation (see \code{nonlin_coefs}).
+#' @param nonlin_coefs Named numeric vector of interaction coefficients
+#'   passed to \code{generate_longitudinal_data()}.
 #' @param adh_shift Numeric vector passed to
 #'   \code{define_treatment_map()}.
 #' @param out_effect Numeric vector passed to
@@ -36,7 +38,8 @@ make_default_simulation_targets <- function(
       binary     = "ranger",
       tte        = "xgboost"
     ),
-    non_linear_feature = TRUE,
+    non_linear_feature = FALSE,
+    nonlin_coefs = c("Age:SideEffect" = 0.15),
     adh_shift  = c(Treatment_1 = 0, Treatment_2 = -0.5, Treatment_3 = -0.9),
     out_effect = c(Treatment_1 = 0, Treatment_2 = 0.3, Treatment_3 = 0.7),
     logHR      = c(Treatment_1 = 0, Treatment_2 = -0.2, Treatment_3 = -0.5),
@@ -90,7 +93,8 @@ make_default_simulation_targets <- function(
         trt_map            = trt_map,
         adherence_type     = "beta",
         outcome_type       = "continuous",
-        non_linear_feature = non_linear_feature
+        non_linear_feature = non_linear_feature,
+        nonlin_coefs       = nonlin_coefs
       )
     ),
     targets::tar_target(
@@ -102,7 +106,8 @@ make_default_simulation_targets <- function(
         trt_map            = trt_map,
         adherence_type     = "binary",
         outcome_type       = "binary",
-        non_linear_feature = non_linear_feature
+        non_linear_feature = non_linear_feature,
+        nonlin_coefs       = nonlin_coefs
       )
     ),
     targets::tar_target(
@@ -114,7 +119,8 @@ make_default_simulation_targets <- function(
         trt_map            = trt_map,
         adherence_type     = "binary",
         outcome_type       = "tte",
-        non_linear_feature = non_linear_feature
+        non_linear_feature = non_linear_feature,
+        nonlin_coefs       = nonlin_coefs
       )
     ),
     # -- Propensity score models ----------------------------------------------

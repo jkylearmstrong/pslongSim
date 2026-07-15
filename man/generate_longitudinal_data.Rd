@@ -21,7 +21,8 @@ generate_longitudinal_data(
   outcome_type = c("continuous", "binary", "tte"),
   outcome_model = list(intercept = 0, adherence = 0.9, se_effect = -0.5, biomarker_effect
     = 0.4, time_trend = 0.05, sd_subject = 0.7, sd_error = 1),
-  non_linear_feature = TRUE,
+  non_linear_feature = FALSE,
+  nonlin_coefs = c(`Age:SideEffect` = 0.15),
   tte_model = list(baseline_logit_h = -3.2, adherence_logHR = -0.5, se_logHR = 0.4,
     biomarker_logHR = -0.25, time_trend_logHR = 0, sd_frailty = 0.6),
   biom_model = list(intercept = 0, phi = 0.75, sd_innov = 0.5, sd_b0 = 0.75),
@@ -61,8 +62,14 @@ compliance.}
 
 \item{outcome_model}{List of outcome model parameters.}
 
-\item{non_linear_feature}{Logical; if \code{TRUE}, adds an Age x
-SideEffect interaction to the outcome with no additive main effects.}
+\item{non_linear_feature}{Logical; if \code{TRUE}, adds interaction terms
+to the outcome as specified by \code{nonlin_coefs}.  Default
+\code{FALSE} for backward compatibility.}
+
+\item{nonlin_coefs}{Named numeric vector of interaction coefficients.
+Names must be in the form \code{"VarA:VarB"} (e.g.,
+\code{c("Age:SideEffect" = 0.15)}).  Only used when
+\code{non_linear_feature = TRUE}.}
 
 \item{tte_model}{List for the TTE hazard model.}
 
@@ -93,12 +100,13 @@ and one of three outcome types (continuous, binary, or time-to-event).
 }
 \section{Non-linear feature}{
 
-When \code{non_linear_feature = TRUE} (the default), a multiplicative
-interaction \code{Age * SideEffect} is added to the outcome with no
-additive main effects.  This creates a signal that is
+When \code{non_linear_feature = TRUE}, one or more multiplicative
+interactions are added to the outcome with no additive main effects.
+The default interaction is \code{Age * SideEffect}.  These signals are
 \strong{undetectable} by linear regression (which can only model additive
-effects of \code{Age} and \code{SideEffect}) but \strong{readily
-detectable} by tree-based models such as random forests or XGBoost,
-which naturally partition on feature interactions.
+effects) but \strong{readily detectable} by tree-based models such as
+random forests or XGBoost, which naturally partition on feature
+interactions.  Use \code{nonlin_coefs} to control which interactions are
+included and their coefficients.
 }
 

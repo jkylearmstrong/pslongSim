@@ -13,3 +13,6 @@ _targets/
 
 # Documentation site
 docs/
+
+# Built package tarballs
+*.tar.gz

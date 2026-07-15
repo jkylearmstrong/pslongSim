@@ -1,0 +1,161 @@
+---
+title: "Getting Started with pslongSim"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Getting Started with pslongSim}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.width = 7,
+  fig.height = 5
+)
+set.seed(42)
+```
+
+## Overview
+
+**pslongSim** simulates longitudinal clinical trial data with
+treatment-driven side effects, an AR(1) biomarker, time-varying
+adherence, and one of three outcome types (continuous, binary, or
+time-to-event).  It provides a complete pipeline from data generation
+through propensity score estimation, IPTW weighting, and marginal
+structural model fitting.
+
+## Quick Start
+
+```{r}
+library(pslongSim)
+
+# Generate 200 patients across 3 treatment arms
+demo <- generate_patient_data_demographic(num_patients = 200, seed = 1)
+trt_map <- suppressWarnings(define_treatment_map(levels(demo$Treatment)))
+
+# Simulate continuous outcomes with 6 visits
+dat <- generate_longitudinal_data(
+  demo, num_visits = 6, trt_map = trt_map,
+  adherence_type = "beta", outcome_type = "continuous"
+)
+
+cat("Rows:", nrow(dat), "\n")
+cat("Columns:", paste(names(dat), collapse = ", "), "\n")
+```
+
+## Propensity Score Estimation
+
+Fit a propensity score model using GLM, Random Forest (ranger), or
+XGBoost:
+
+```{r}
+ps_glm <- fit_ps_tidymodels(dat, model = "glm")
+cat("PS range:", range(ps_glm$ps_hat), "\n")
+```
+
+## IPTW and MSM
+
+Compute stabilised inverse probability of treatment weights and fit a
+marginal structural model:
+
+```{r}
+dat$ps_hat <- ps_glm$ps_hat
+dat_w <- compute_stabilized_iptw(dat)
+cat("Weight range:", range(dat_w$w), "\n")
+
+msm <- fit_msm_gee_cont(dat_w)
+summary(msm)
+```
+
+## Non-Linear Feature Detection
+
+One of pslongSim's key features is the ability to generate data with
+non-linear interactions that are **undetectable by linear regression**
+but **readily detectable by tree-based models**.
+
+When `non_linear_feature = TRUE`, interaction terms (e.g.,
+`Age * SideEffect`) are added to the outcome with no additive main
+effects.  Linear models can only capture additive effects, so they
+miss this signal entirely.  Random forests and XGBoost, which
+naturally partition on feature interactions, detect it easily.
+
+```{r}
+# Generate data WITH the non-linear interaction
+set.seed(42)
+demo <- generate_patient_data_demographic(num_patients = 1000, seed = 1)
+trt_map <- suppressWarnings(define_treatment_map(levels(demo$Treatment)))
+
+dat_nl <- generate_longitudinal_data(
+  demo, num_visits = 6, trt_map = trt_map,
+  adherence_type = "beta", outcome_type = "continuous",
+  non_linear_feature = TRUE,
+  nonlin_coefs = c("Age:SideEffect" = 0.20)
+)
+
+cat("NL columns:", paste(grep("^NL_", names(dat_nl), value = TRUE), collapse = ", "), "\n")
+```
+
+### Linear Regression vs Random Forest
+
+```{r rf-comparison, eval=requireNamespace("randomForest", quietly=TRUE)}
+# Fit a linear model (additive only — cannot capture the interaction)
+lm_additive <- lm(
+  Outcome ~ Treatment + VisitNumber + Age + GenderMale +
+    SideEffect + Biomarker + Compliant,
+  data = dat_nl
+)
+
+# Fit a random forest
+rf_fit <- randomForest::randomForest(
+  Outcome ~ Treatment + VisitNumber + Age + GenderMale +
+    SideEffect + Biomarker + Compliant,
+  data = dat_nl, ntree = 200
+)
+
+cat("Linear model R-squared:", round(summary(lm_additive)$r.squared, 4), "\n")
+cat("Random Forest R-squared:", round(1 - rf_fit$mse[200] / var(dat_nl$Outcome), 4), "\n")
+```
+
+The random forest R-squared substantially exceeds the linear model
+R-squared because the RF captures the `Age * SideEffect` interaction
+that the linear model misses entirely.
+
+### Custom Interactions
+
+You can specify multiple interactions via `nonlin_coefs`:
+
+```{r}
+dat_multi <- generate_longitudinal_data(
+  demo, num_visits = 6, trt_map = trt_map,
+  adherence_type = "beta", outcome_type = "continuous",
+  non_linear_feature = TRUE,
+  nonlin_coefs = c(
+    "Age:SideEffect"   = 0.15,
+    "Biomarker:Age"    = 0.10
+  )
+)
+
+cat("NL columns:", paste(grep("^NL_", names(dat_multi), value = TRUE), collapse = ", "), "\n")
+```
+
+## Using the Pipeline
+
+The full simulation workflow is packaged as a `targets` pipeline:
+
+```{r eval=FALSE}
+# Requires the 'targets' package
+targets::tar_make()
+
+# Read results
+targets::tar_read(summary_cont)
+targets::tar_read(msm_bin)
+targets::tar_read(summary_cox)
+```
+
+## Session Info
+
+```{r}
+sessionInfo()
+```

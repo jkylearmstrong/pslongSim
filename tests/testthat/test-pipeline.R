@@ -20,8 +20,14 @@ test_that("pipeline validates inputs", {
                "must be positive")
 })
 
-test_that("pipeline accepts non_linear_feature parameter", {
+test_that("pipeline accepts non_linear_feature and nonlin_coefs parameters", {
   skip_if_not_installed("targets")
   targets <- make_default_simulation_targets(non_linear_feature = FALSE)
   expect_length(targets, 17L)
+
+  targets2 <- make_default_simulation_targets(
+    non_linear_feature = TRUE,
+    nonlin_coefs = c("Age:SideEffect" = 0.20)
+  )
+  expect_length(targets2, 17L)
 })

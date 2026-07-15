@@ -1,3 +1,26 @@
+# pslongSim 0.3.1
+
+## Changes
+
+* **`non_linear_feature` default changed to `FALSE`** for backward
+  compatibility.  Explicitly set to `TRUE` to enable interaction generation.
+* **New `nonlin_coefs` parameter** on `generate_longitudinal_data()` and
+  `make_default_simulation_targets()`.  A named numeric vector of interaction
+  coefficients (e.g., `c("Age:SideEffect" = 0.15)`).  Multiple interactions
+  are supported; each creates an `NL_<VarA>_<VarB>` column.
+* Removed hardcoded `NL_Feature` column; interactions are now generated
+  dynamically from `nonlin_coefs` names.
+
+## Infrastructure
+
+* Modernised CI workflow: multi-OS matrix (macOS, Windows, Ubuntu),
+  updated `actions/checkout` to v4, `r-lib/actions` to v2, RSPM enabled.
+* Added `VignetteBuilder: knitr` and `pkgdown` site configuration
+  (`_pkgdown.yml`).
+* Added vignette `getting-started` demonstrating non-linear feature
+  detection (linear regression vs random forest).
+* Added `*.tar.gz` to `.gitignore` to exclude built tarballs.
+
 # pslongSim 0.3.0
 
 ## New Features

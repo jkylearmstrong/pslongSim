@@ -1,0 +1,52 @@
+url: https://jkylearmstrong.github.io/pslongSim/
+
+template:
+  bootstrap: 5
+
+navbar:
+  structure:
+    left:  [intro, reference, articles, news]
+    right: [search, github]
+  github:
+    url: https://github.com/jkylearmstrong/pslongSim
+
+reference:
+  - title: Data Simulation
+    desc: Functions for generating synthetic clinical trial data.
+    contents:
+      - generate_patient_data_demographic
+      - generate_longitudinal_data
+      - define_treatment_map
+
+  - title: Propensity Score Models
+    desc: Tidymodels-based PS estimation (GLM, XGBoost, Ranger).
+    contents:
+      - fit_ps_tidymodels
+      - ps_recipe
+      - ps_model_spec
+
+  - title: Weighting and MSM
+    desc: IPTW computation and marginal structural model fitting.
+    contents:
+      - compute_stabilized_iptw
+      - filter_at_risk
+      - fit_msm_gee_cont
+      - fit_msm_gee_bin
+      - fit_msm_cox
+
+  - title: Pipeline
+    desc: targets-based simulation pipeline.
+    contents:
+      - make_default_simulation_targets
+
+  - title: Utilities
+    desc: Helper functions.
+    contents:
+      - inv_logit
+      - clamp
+
+articles:
+  - title: Getting Started
+    navbar: ~
+    contents:
+      - getting-started

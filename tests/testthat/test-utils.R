@@ -13,20 +13,20 @@ test_that("clamp constrains values to [lower, upper]", {
 
 test_that("validate_columns errors on missing columns", {
   df <- data.frame(a = 1, b = 2)
-  expect_error(validate_columns(df, c("a", "c"), "test_fn"), "missing required column")
+  expect_error(pslongSim:::validate_columns(df, c("a", "c"), "test_fn"), "missing required column")
 })
 
 test_that("validate_columns passes on present columns", {
   df <- data.frame(a = 1, b = 2)
-  expect_invisible(validate_columns(df, c("a", "b"), "test_fn"))
+  expect_invisible(pslongSim:::validate_columns(df, c("a", "b"), "test_fn"))
 })
 
 test_that("validate_min_rows errors when too few rows", {
   df <- data.frame(a = 1:3)
-  expect_error(validate_min_rows(df, 10, "test_fn"), "requires at least 10")
+  expect_error(pslongSim:::validate_min_rows(df, 10, "test_fn"), "requires at least 10")
 })
 
 test_that("require_suggested errors for missing package", {
-  expect_error(require_suggested("nonexistent_package_xyz"),
+  expect_error(pslongSim:::require_suggested("nonexistent_package_xyz"),
                "required but not installed")
 })

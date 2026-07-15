@@ -30,20 +30,36 @@ test_that("non-linear feature column is present when enabled", {
                                     adherence_type = "binary",
                                     outcome_type = "continuous",
                                     non_linear_feature = TRUE)
-  expect_true("NL_Feature" %in% names(dat))
-  expect_equal(dat$NL_Feature, dat$Age * dat$SideEffect)
+  expect_true("NL_Age_SideEffect" %in% names(dat))
+  expect_equal(dat$NL_Age_SideEffect, dat$Age * dat$SideEffect)
 })
 
-test_that("non-linear feature column is absent when disabled", {
+test_that("non-linear feature column is absent when disabled (default)", {
   set.seed(10)
   demo <- generate_patient_data_demographic(num_patients = 30, n_cohorts = 3)
   trt_map <- suppressWarnings(define_treatment_map(levels(demo$Treatment)))
 
   dat <- generate_longitudinal_data(demo, num_visits = 4, trt_map = trt_map,
                                     adherence_type = "binary",
-                                    outcome_type = "continuous",
-                                    non_linear_feature = FALSE)
-  expect_false("NL_Feature" %in% names(dat))
+                                    outcome_type = "continuous")
+  expect_false(any(grepl("^NL_", names(dat))))
+})
+
+test_that("nonlin_coefs creates multiple interaction columns", {
+  set.seed(10)
+  demo <- generate_patient_data_demographic(num_patients = 30, n_cohorts = 3)
+  trt_map <- suppressWarnings(define_treatment_map(levels(demo$Treatment)))
+
+  dat <- generate_longitudinal_data(
+    demo, num_visits = 4, trt_map = trt_map,
+    adherence_type = "binary", outcome_type = "continuous",
+    non_linear_feature = TRUE,
+    nonlin_coefs = c("Age:SideEffect" = 0.15, "Biomarker:Age" = 0.10)
+  )
+  expect_true("NL_Age_SideEffect" %in% names(dat))
+  expect_true("NL_Biomarker_Age" %in% names(dat))
+  expect_equal(dat$NL_Age_SideEffect, dat$Age * dat$SideEffect)
+  expect_equal(dat$NL_Biomarker_Age, dat$Biomarker * dat$Age)
 })
 
 test_that("binary outcome produces 0/1 Outcome column", {

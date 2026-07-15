@@ -11,7 +11,8 @@ make_default_simulation_targets(
   seed_base = 10L,
   n_cohorts = 3L,
   ps_models = list(continuous = "glm", binary = "ranger", tte = "xgboost"),
-  non_linear_feature = TRUE,
+  non_linear_feature = FALSE,
+  nonlin_coefs = c(`Age:SideEffect` = 0.15),
   adh_shift = c(Treatment_1 = 0, Treatment_2 = -0.5, Treatment_3 = -0.9),
   out_effect = c(Treatment_1 = 0, Treatment_2 = 0.3, Treatment_3 = 0.7),
   logHR = c(Treatment_1 = 0, Treatment_2 = -0.2, Treatment_3 = -0.5),
@@ -34,8 +35,11 @@ outcomes.}
 \code{binary}, and \code{tte}; each must be one of \code{"glm"},
 \code{"ranger"}, or \code{"xgboost"}.}
 
-\item{non_linear_feature}{Logical; whether to include the Age x
-SideEffect interaction in data generation.}
+\item{non_linear_feature}{Logical; whether to include interaction terms
+in data generation (see \code{nonlin_coefs}).}
+
+\item{nonlin_coefs}{Named numeric vector of interaction coefficients
+passed to \code{generate_longitudinal_data()}.}
 
 \item{adh_shift}{Numeric vector passed to
 \code{define_treatment_map()}.}

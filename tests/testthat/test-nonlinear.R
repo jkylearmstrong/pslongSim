@@ -17,9 +17,9 @@ test_that("non-linear feature is undetectable by linear regression", {
     non_linear_feature = TRUE
   )
 
-  # Verify NL_Feature exists and is the interaction
-  expect_true("NL_Feature" %in% names(dat))
-  expect_equal(dat$NL_Feature, dat$Age * dat$SideEffect)
+  # Verify interaction column exists and is the product
+  expect_true("NL_Age_SideEffect" %in% names(dat))
+  expect_equal(dat$NL_Age_SideEffect, dat$Age * dat$SideEffect)
 
   # Fit a linear model WITHOUT the interaction
   lm_additive <- lm(Outcome ~ Treatment + VisitNumber + Age + GenderMale +
@@ -60,7 +60,7 @@ test_that("non-linear feature is undetectable by linear regression", {
                            "vs additive LM R2:", round(r2_additive, 3)))
 })
 
-test_that("NL_Feature has no main effect in linear model", {
+test_that("NL interaction has no additive main effect in linear model", {
   set.seed(7)
   n <- 500
   demo <- generate_patient_data_demographic(num_patients = n, n_cohorts = 3)
@@ -72,11 +72,8 @@ test_that("NL_Feature has no main effect in linear model", {
     non_linear_feature = TRUE
   )
 
-  # A model with only NL_Feature as predictor should have near-zero R^2
-  # (no additive effect of Age or SideEffect in the DGP)
-  m <- lm(Outcome ~ NL_Feature, data = dat)
-  # The NL_Feature has no additive main effect, so its coefficient
-  # should be small relative to noise
-  expect_true(abs(coef(m)["NL_Feature"]) < 2,
-              info = "NL_Feature main effect should be near zero")
+  # A model with only the NL interaction as predictor should have near-zero R^2
+  m <- lm(Outcome ~ NL_Age_SideEffect, data = dat)
+  expect_true(abs(coef(m)["NL_Age_SideEffect"]) < 2,
+              info = "NL interaction main effect should be near zero")
 })

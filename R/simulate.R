@@ -50,13 +50,14 @@ generate_patient_data_demographic <- function(
 #' and one of three outcome types (continuous, binary, or time-to-event).
 #'
 #' @section Non-linear feature:
-#' When \code{non_linear_feature = TRUE} (the default), a multiplicative
-#' interaction \code{Age * SideEffect} is added to the outcome with no
-#' additive main effects.  This creates a signal that is
+#' When \code{non_linear_feature = TRUE}, one or more multiplicative
+#' interactions are added to the outcome with no additive main effects.
+#' The default interaction is \code{Age * SideEffect}.  These signals are
 #' \strong{undetectable} by linear regression (which can only model additive
-#' effects of \code{Age} and \code{SideEffect}) but \strong{readily
-#' detectable} by tree-based models such as random forests or XGBoost,
-#' which naturally partition on feature interactions.
+#' effects) but \strong{readily detectable} by tree-based models such as
+#' random forests or XGBoost, which naturally partition on feature
+#' interactions.  Use \code{nonlin_coefs} to control which interactions are
+#' included and their coefficients.
 #'
 #' @param patient_data Data frame from \code{generate_patient_data_demographic()}.
 #' @param num_visits Integer number of study visits.
@@ -73,8 +74,13 @@ generate_patient_data_demographic <- function(
 #' @param outcome_type \code{"continuous"}, \code{"binary"}, or
 #'   \code{"tte"}.
 #' @param outcome_model List of outcome model parameters.
-#' @param non_linear_feature Logical; if \code{TRUE}, adds an Age x
-#'   SideEffect interaction to the outcome with no additive main effects.
+#' @param non_linear_feature Logical; if \code{TRUE}, adds interaction terms
+#'   to the outcome as specified by \code{nonlin_coefs}.  Default
+#'   \code{FALSE} for backward compatibility.
+#' @param nonlin_coefs Named numeric vector of interaction coefficients.
+#'   Names must be in the form \code{"VarA:VarB"} (e.g.,
+#'   \code{c("Age:SideEffect" = 0.15)}).  Only used when
+#'   \code{non_linear_feature = TRUE}.
 #' @param tte_model List for the TTE hazard model.
 #' @param biom_model List for the AR(1) biomarker parameters.
 #' @param rho_uv Correlation between outcome and adherence subject effects.
@@ -128,7 +134,8 @@ generate_longitudinal_data <- function(
       sd_error         = 1.0
     ),
     # Non-linear feature toggle
-    non_linear_feature = TRUE,
+    non_linear_feature = FALSE,
+    nonlin_coefs = c("Age:SideEffect" = 0.15),
     # TTE hazard (discrete-time)
     tte_model = list(
       baseline_logit_h = -3.2,
@@ -318,13 +325,17 @@ generate_longitudinal_data <- function(
     Biomarker   = Biom
   )
 
-  # Non-linear interaction feature (Age x SideEffect)
-  # This term is included ONLY as a product; no additive Age or SideEffect
-  # main effects are added.  Linear models (which model additive effects
-  # only) cannot detect this signal, while tree-based models (random forest,
-  # XGBoost) naturally partition on it.
-  if (non_linear_feature) {
-    out_df$NL_Feature <- out_df$Age * out_df$SideEffect
+  # Non-linear interaction features
+  # Interactions are included ONLY as products; no additive main effects.
+  # Linear models cannot detect these signals; tree-based models can.
+  if (non_linear_feature && length(nonlin_coefs) > 0L) {
+    for (nm in names(nonlin_coefs)) {
+      parts <- strsplit(nm, ":", fixed = TRUE)[[1L]]
+      if (length(parts) == 2L && all(parts %in% names(out_df))) {
+        col_name <- paste0("NL_", parts[1L], "_", parts[2L])
+        out_df[[col_name]] <- out_df[[parts[1L]]] * out_df[[parts[2L]]]
+      }
+    }
   }
 
   # -- Outcome generation -----------------------------------------------------
@@ -338,8 +349,16 @@ generate_longitudinal_data <- function(
       outcome_model$time_trend * (visit - 1) +
       u_i
 
-    if (non_linear_feature) {
-      lp_out <- lp_out + 0.15 * out_df$NL_Feature
+    if (non_linear_feature && length(nonlin_coefs) > 0L) {
+      for (nm in names(nonlin_coefs)) {
+        parts <- strsplit(nm, ":", fixed = TRUE)[[1L]]
+        if (length(parts) == 2L) {
+          col_name <- paste0("NL_", parts[1L], "_", parts[2L])
+          if (col_name %in% names(out_df)) {
+            lp_out <- lp_out + nonlin_coefs[[nm]] * out_df[[col_name]]
+          }
+        }
+      }
     }
 
     if (outcome_type == "continuous") {
@@ -361,8 +380,16 @@ generate_longitudinal_data <- function(
     tte_model$time_trend_logHR * (visit - 1) +
     u_i
 
-  if (non_linear_feature) {
-    lp_h <- lp_h + 0.10 * out_df$NL_Feature
+  if (non_linear_feature && length(nonlin_coefs) > 0L) {
+    for (nm in names(nonlin_coefs)) {
+      parts <- strsplit(nm, ":", fixed = TRUE)[[1L]]
+      if (length(parts) == 2L) {
+        col_name <- paste0("NL_", parts[1L], "_", parts[2L])
+        if (col_name %in% names(out_df)) {
+          lp_h <- lp_h + nonlin_coefs[[nm]] * out_df[[col_name]]
+        }
+      }
+    }
   }
 
   h <- inv_logit(lp_h)
@@ -393,13 +420,14 @@ generate_longitudinal_data <- function(
   }
 
   # Start-stop intervals
+  nl_cols <- grep("^NL_", names(out_df), value = TRUE)
   by_pid <- split(out_df, out_df$PatientID)
   tte_intervals <- do.call(rbind, lapply(by_pid, function(df_i) {
     df_i <- df_i[order(df_i$VisitNumber), ]
     t_abs <- as.numeric(df_i$VisitDate - min(df_i$VisitDate))
     tstart <- c(0, head(t_abs, -1))
     tstop  <- t_abs
-    data.frame(
+    base <- data.frame(
       PatientID   = df_i$PatientID,
       Treatment   = df_i$Treatment,
       Age         = df_i$Age,
@@ -409,12 +437,13 @@ generate_longitudinal_data <- function(
       Compliant   = df_i$Compliant,
       Adherence   = df_i$Adherence,
       Biomarker   = df_i$Biomarker,
-      NL_Feature  = df_i$NL_Feature,
       tstart      = tstart,
       tstop       = tstop,
       event       = df_i$Event,
       AtRisk      = df_i$AtRisk
     )
+    for (nc in nl_cols) base[[nc]] <- df_i[[nc]]
+    base
   }))
 
   subj_event <- aggregate(

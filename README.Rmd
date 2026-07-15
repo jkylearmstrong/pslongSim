@@ -19,13 +19,18 @@ knitr::opts_chunk$set(
 # pslongSim
 
 <!-- badges: start -->
+[![R-CMD-check](https://github.com/jkylearmstrong/pslongSim/actions/workflows/r.yml/badge.svg)](https://github.com/jkylearmstrong/pslongSim/actions/workflows/r.yml)
+[![CRAN status](https://www.r-pkg.org/badges/version/pslongSim)](https://CRAN.R-project.org/package=pslongSim)
 <!-- badges: end -->
 
-The goal of **pslongSim** is to provide a robust simulation framework for evaluating propensity score methods for adjustment of time-varying non-adherence in longitudinal randomized clinical trials.
+The goal of **pslongSim** is to provide a robust simulation framework
+for evaluating propensity score methods for adjustment of time-varying
+non-adherence in longitudinal randomized clinical trials.
 
 ## Installation
 
-You can install the development version of pslongSim from [GitHub](https://github.com/jkylearmstrong/pslongSim) with:
+You can install the development version of pslongSim from
+[GitHub](https://github.com/jkylearmstrong/pslongSim) with:
 
 ```r
 # install.packages("devtools")
@@ -35,43 +40,75 @@ devtools::install_github("jkylearmstrong/pslongSim")
 ## Running the Simulation
 
 This project uses the `targets` R package for pipeline management. The
-default pipeline now lives in the package, so this repository can act as
-the home for the end-to-end simulation workflow. To run the full
-simulation suite:
-
-1.  Ensure all dependencies are installed (managed via `renv`).
-2.  Run the following command in the R console:
+default pipeline lives in the package. To run the full simulation suite:
 
 ```r
 targets::tar_make()
 ```
 
 This will:
-- Generate synthetic patient demographics and longitudinal data (binary, continuous, and time-to-event).
+
+- Generate synthetic patient demographics and longitudinal data
+  (binary, continuous, and time-to-event).
 - Fit propensity score models using GLM, Random Forest, and XGBoost.
 - Compute stabilized IPTW weights.
-- Fit Marginal Structural Models (MSM) and summarize results.
+- Fit Marginal Structural Models (MSM) and summarise results.
 
 ## Modifying the Experiment
 
 You can modify the simulation parameters by editing the
 `make_default_simulation_targets()` call in `_targets.R`:
 
-- **Sample Size**: Change `n_patients`, `n_visits`, and `tte_visits`.
-- **Treatment Effects**: Adjust the `adh_shift`, `out_effect`, `logHR`,
-  and `se_shift` arguments.
-- **Models**: Switch between different machine learning models with the
-  `ps_models` argument.
+- **Sample size**: Change `num_patients`, `num_visits`, and
+  `tte_visits`.
+- **Treatment effects**: Adjust `adh_shift`, `out_effect`, `logHR`,
+  and `se_shift`.
+- **Models**: Switch between different ML models with the `ps_models`
+  argument.
+
+## Non-Linear Feature
+
+When `non_linear_feature = TRUE`, interaction terms (e.g.,
+`Age * SideEffect`) are added to the outcome with no additive main
+effects.  Linear models cannot detect this signal, while tree-based
+models (random forest, XGBoost) capture it naturally:
+
+```{r eval=FALSE}
+library(pslongSim)
+demo <- generate_patient_data_demographic(num_patients = 1000, seed = 1)
+trt_map <- suppressWarnings(define_treatment_map(levels(demo$Treatment)))
+dat <- generate_longitudinal_data(
+  demo, num_visits = 6, trt_map = trt_map,
+  adherence_type = "beta", outcome_type = "continuous",
+  non_linear_feature = TRUE,
+  nonlin_coefs = c("Age:SideEffect" = 0.20)
+)
+
+lm_fit <- lm(Outcome ~ Treatment + VisitNumber + Age + SideEffect, data = dat)
+rf_fit <- randomForest::randomForest(Outcome ~ Treatment + VisitNumber + Age + SideEffect, data = dat)
+
+summary(lm_fit)$r.squared   # low
+1 - rf_fit$mse[200] / var(dat$Outcome)  # substantially higher
+```
+
+Multiple interactions can be specified via `nonlin_coefs`:
+
+```r
+nonlin_coefs = c("Age:SideEffect" = 0.15, "Biomarker:Age" = 0.10)
+```
+
+See `vignette("getting-started")` for a full walkthrough.
 
 ## R Package Structure
 
-- `R/`: Contains the core simulation and analysis functions.
+- `R/`: Core simulation and analysis functions.
 - `tests/`: Unit tests for ensuring reliability.
+- `vignettes/`: Package vignettes.
 - `_targets.R`: Loads the packaged default simulation pipeline.
 
 ## Results Summary
 
-After running `tar_make()`, you can inspect the results using:
+After running `tar_make()`, you can inspect results with:
 
 ```r
 targets::tar_read(summary_cont)
