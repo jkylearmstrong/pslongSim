@@ -34,7 +34,10 @@ devtools::install_github("jkylearmstrong/pslongSim")
 
 ## Running the Simulation
 
-This project uses the `targets` R package for pipeline management. To run the full simulation suite:
+This project uses the `targets` R package for pipeline management. The
+default pipeline now lives in the package, so this repository can act as
+the home for the end-to-end simulation workflow. To run the full
+simulation suite:
 
 1.  Ensure all dependencies are installed (managed via `renv`).
 2.  Run the following command in the R console:
@@ -51,17 +54,20 @@ This will:
 
 ## Modifying the Experiment
 
-You can modify the simulation parameters by editing the `_targets.R` file:
+You can modify the simulation parameters by editing the
+`make_default_simulation_targets()` call in `_targets.R`:
 
-- **Sample Size**: Change `n_patients` and `n_visits` at the top of the file.
-- **Treatment Effects**: Adjust the `adh_shift`, `out_effect`, `logHR`, and `se_shift` parameters within the `trt_map` target.
-- **Models**: Switch between different machine learning models in the PS targets (`ps_cont`, `ps_bin`, `ps_tte`).
+- **Sample Size**: Change `n_patients`, `n_visits`, and `tte_visits`.
+- **Treatment Effects**: Adjust the `adh_shift`, `out_effect`, `logHR`,
+  and `se_shift` arguments.
+- **Models**: Switch between different machine learning models with the
+  `ps_models` argument.
 
 ## R Package Structure
 
 - `R/`: Contains the core simulation and analysis functions.
 - `tests/`: Unit tests for ensuring reliability.
-- `_targets.R`: Defines the simulation pipeline.
+- `_targets.R`: Loads the packaged default simulation pipeline.
 
 ## Results Summary
 
