@@ -110,3 +110,13 @@ interactions.  Use \code{nonlin_coefs} to control which interactions are
 included and their coefficients.
 }
 
+\examples{
+demo <- generate_patient_data_demographic(num_patients = 50, seed = 1)
+trt_map <- suppressWarnings(define_treatment_map(levels(demo$Treatment)))
+dat <- generate_longitudinal_data(demo, num_visits = 4, trt_map = trt_map)
+head(dat)
+}
+\seealso{
+\code{\link{generate_patient_data_demographic}},
+  \code{\link{define_treatment_map}}, \code{\link{filter_at_risk}}
+}

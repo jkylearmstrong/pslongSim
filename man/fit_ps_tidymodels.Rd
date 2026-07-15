@@ -40,3 +40,14 @@ A list with elements \code{workflow}, \code{fit}, and
 Fits a binary classification model for the probability of compliance
 (propensity score) using a \pkg{tidymodels} workflow.
 }
+\examples{
+demo <- generate_patient_data_demographic(num_patients = 80, seed = 1)
+trt_map <- suppressWarnings(define_treatment_map(levels(demo$Treatment)))
+dat <- generate_longitudinal_data(demo, num_visits = 4, trt_map = trt_map)
+ps <- fit_ps_tidymodels(dat, model = "glm")
+range(ps$ps_hat)
+}
+\seealso{
+\code{\link{ps_recipe}}, \code{\link{ps_model_spec}},
+  \code{\link{compute_stabilized_iptw}}
+}

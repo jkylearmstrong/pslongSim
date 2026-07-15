@@ -1,3 +1,36 @@
+# pslongSim 0.3.2
+
+## Improvements
+
+* **`nonlin_coefs` validation**: malformed entries (e.g., `"Age+SideEffect"`
+  instead of `"Age:SideEffect"`) now emit warnings instead of being silently
+  skipped.  Missing variable names also generate informative warnings.
+* **`sd_frailty` now used**: the `tte_model$sd_frailty` parameter (previously
+  declared but unused) now controls the TTE frailty standard deviation.
+  Previously `outcome_model$sd_subject` was used for both continuous/binary
+  and TTE outcomes.
+* **`xgboost` and `ranger` moved to Suggests**: these packages are only
+  needed when `model = "xgboost"` or `model = "ranger"` is requested.
+  The GLM path now works without them.
+* **Reduced code duplication**: non-linear interaction column creation and
+  linear-predictor addition extracted into `build_nl_columns()` and
+  `add_nl_to_lp()` internal helpers.
+* **`@examples` added** to all key exported functions: `generate_patient_data_demographic`,
+  `generate_longitudinal_data`, `define_treatment_map`, `ps_recipe`,
+  `ps_model_spec`, `fit_ps_tidymodels`, `compute_stabilized_iptw`,
+  `fit_msm_gee_cont`, and `fit_msm_cox`.
+* **`@seealso` cross-references** added to documentation for related functions.
+* Removed stale `.pred_1` from `globalVariables()`.
+* Removed redundant `stringsAsFactors = FALSE` from `define_treatment_map()`.
+* Removed unnecessary `LazyData: true` from DESCRIPTION.
+* Fixed stale `NL_Feature` reference in `example/minimal.R`.
+
+## Testing
+
+* Added tests for non-linear features in binary and TTE outcomes.
+* Added tests for `nonlin_coefs` validation (malformed names, missing variables).
+* Added edge-case tests for `clamp()` (NA, NaN, Inf, lower==upper, empty input).
+
 # pslongSim 0.3.1
 
 ## Changes

@@ -12,6 +12,12 @@
 #'   (\code{Treatment}, \code{VisitNumber}, \code{Age}, \code{GenderMale},
 #'   \code{SideEffect}, \code{Biomarker}).
 #' @return A \code{recipes::recipe} object.
+#' @examples
+#' demo <- generate_patient_data_demographic(num_patients = 50, seed = 1)
+#' trt_map <- suppressWarnings(define_treatment_map(levels(demo$Treatment)))
+#' dat <- generate_longitudinal_data(demo, num_visits = 4, trt_map = trt_map)
+#' rec <- ps_recipe(dat)
+#' rec
 #' @export
 ps_recipe <- function(df,
                       outcome = "Compliant",
@@ -53,24 +59,34 @@ ps_recipe <- function(df,
 #' @param tune Logical; if \code{TRUE}, tuning placeholders are added for
 #'   \code{mtry} (relevant for \code{"xgboost"} and \code{"ranger"}).
 #' @return A \code{parsnip} model specification.
+#' @examples
+#' # GLM specification (no extra dependencies)
+#' spec <- ps_model_spec("glm")
+#'
+#' # Ranger specification (requires ranger package)
+#' if (requireNamespace("ranger", quietly = TRUE)) {
+#'   spec_rf <- ps_model_spec("ranger")
+#' }
 #' @export
 ps_model_spec <- function(model = c("glm", "xgboost", "ranger"), tune = FALSE) {
   model <- match.arg(model)
-  if (model == "glm") {
-    parsnip::logistic_reg() |>
-      parsnip::set_engine("glm")
-  } else if (model == "xgboost") {
+  if (model == "xgboost") {
+    require_suggested("xgboost")
     spec <- parsnip::boost_tree(trees = 500, learn_rate = 0.05, tree_depth = 4)
     if (tune) spec <- parsnip::set_args(spec, mtry = tune::tune())
     spec |>
       parsnip::set_mode("classification") |>
       parsnip::set_engine("xgboost")
-  } else {
+  } else if (model == "ranger") {
+    require_suggested("ranger")
     spec <- parsnip::rand_forest(trees = 1000, min_n = 10)
     if (tune) spec <- parsnip::set_args(spec, mtry = tune::tune())
     spec |>
       parsnip::set_mode("classification") |>
       parsnip::set_engine("ranger", probability = TRUE)
+  } else {
+    parsnip::logistic_reg() |>
+      parsnip::set_engine("glm")
   }
 }
 
@@ -91,6 +107,14 @@ ps_model_spec <- function(model = c("glm", "xgboost", "ranger"), tune = FALSE) {
 #' @param grid Integer grid size or a \pkg{dials} grid object.
 #' @return A list with elements \code{workflow}, \code{fit}, and
 #'   \code{ps_hat} (numeric vector of propensity scores).
+#' @seealso \code{\link{ps_recipe}}, \code{\link{ps_model_spec}},
+#'   \code{\link{compute_stabilized_iptw}}
+#' @examples
+#' demo <- generate_patient_data_demographic(num_patients = 80, seed = 1)
+#' trt_map <- suppressWarnings(define_treatment_map(levels(demo$Treatment)))
+#' dat <- generate_longitudinal_data(demo, num_visits = 4, trt_map = trt_map)
+#' ps <- fit_ps_tidymodels(dat, model = "glm")
+#' range(ps$ps_hat)
 #' @export
 fit_ps_tidymodels <- function(df,
                                model = c("glm", "xgboost", "ranger"),

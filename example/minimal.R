@@ -19,9 +19,10 @@ dat <- generate_longitudinal_data(demo, num_visits = 6, trt_map = trt_map,
                                   outcome_type = "continuous",
                                   non_linear_feature = TRUE)
 
-# The NL_Feature column (Age x SideEffect interaction) is undetectable
+# The NL_ columns (Age x SideEffect interaction) are undetectable
 # by linear regression but detectable by random forest / XGBoost:
-cat("NL_Feature present:", "NL_Feature" %in% names(dat), "\n")
+nl_cols <- grep("^NL_", names(dat), value = TRUE)
+cat("NL columns present:", paste(nl_cols, collapse = ", "), "\n")
 cat("Column names:", paste(names(dat), collapse = ", "), "\n")
 
 # Tidymodels PS (GLM)

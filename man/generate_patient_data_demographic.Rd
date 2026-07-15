@@ -34,3 +34,7 @@ A data.frame with columns \code{PatientID}, \code{Age},
 Creates a baseline patient data frame with IDs, ages, genders, and
 randomised treatment assignments.
 }
+\examples{
+demo <- generate_patient_data_demographic(num_patients = 100, seed = 1)
+head(demo)
+}

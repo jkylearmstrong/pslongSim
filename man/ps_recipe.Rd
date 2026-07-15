@@ -25,3 +25,10 @@ estimation.  The outcome column is converted to a factor (required for
 binary classification), dummy-encoded, zero-variance predictors are
 removed, and numeric predictors are normalised.
 }
+\examples{
+demo <- generate_patient_data_demographic(num_patients = 50, seed = 1)
+trt_map <- suppressWarnings(define_treatment_map(levels(demo$Treatment)))
+dat <- generate_longitudinal_data(demo, num_visits = 4, trt_map = trt_map)
+rec <- ps_recipe(dat)
+rec
+}

@@ -69,7 +69,7 @@ require_suggested <- function(pkg) {
 # Global variables to silence R CMD check NOTES for NSE / pipeline targets
 if (getRversion() >= "2.15.1") {
   utils::globalVariables(c(
-    "AtRisk", "PatientID", "w", "event", "tstop", ".pred_1", "p_marg",
+    "AtRisk", "PatientID", "w", "event", "tstop", "p_marg",
     "demo", "trt_map", "dat_cont", "dat_bin", "dat_tte",
     "ps_cont", "ps_bin", "ps_tte",
     "dat_cont_w", "dat_bin_w", "tte_ivl_w",
@@ -82,8 +82,6 @@ if (getRversion() >= "2.15.1") {
 
 #' @importFrom stats aggregate as.formula binomial gaussian predict quantile rbinom rnorm
 #' @importFrom utils head
-#' @importFrom xgboost xgboost
-#' @importFrom ranger ranger
 #' @importFrom recipes recipe step_dummy step_zv step_normalize all_nominal_predictors all_numeric_predictors all_predictors
 #' @importFrom parsnip logistic_reg boost_tree rand_forest set_engine set_mode set_args fit
 #' @importFrom workflows workflow add_model add_recipe

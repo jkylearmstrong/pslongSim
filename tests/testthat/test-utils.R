@@ -11,6 +11,15 @@ test_that("clamp constrains values to [lower, upper]", {
   expect_error(clamp(1, lower = 5, upper = 2), "must be <=")
 })
 
+test_that("clamp handles edge cases", {
+  expect_equal(clamp(NA_real_, 0, 1), NA_real_)
+  expect_equal(clamp(NaN, 0, 1), NaN)
+  expect_equal(clamp(Inf, 0, 1), 1)
+  expect_equal(clamp(-Inf, 0, 1), 0)
+  expect_equal(clamp(0.5, 0.5, 0.5), 0.5)
+  expect_equal(clamp(integer(0), 0, 1), numeric(0))
+})
+
 test_that("validate_columns errors on missing columns", {
   df <- data.frame(a = 1, b = 2)
   expect_error(pslongSim:::validate_columns(df, c("a", "c"), "test_fn"), "missing required column")

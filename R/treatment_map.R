@@ -14,6 +14,15 @@
 #'   Recycled with warning on length mismatch.
 #' @return A data.frame with one row per treatment level and rownames equal to
 #'   the treatment level strings.
+#' @examples
+#' map <- define_treatment_map(
+#'   c("Placebo", "Drug_A", "Drug_B"),
+#'   adh_shift  = c(0, -0.5, -0.9),
+#'   out_effect = c(0, 0.3, 0.7),
+#'   logHR      = c(0, -0.2, -0.5),
+#'   se_shift   = c(0, 0.2, 0.4)
+#' )
+#' map
 #' @export
 define_treatment_map <- function(levels,
                                  adh_shift = 0,
@@ -40,8 +49,7 @@ define_treatment_map <- function(levels,
     adh_shift  = rep(adh_shift, length.out = L),
     out_effect = rep(out_effect, length.out = L),
     logHR      = rep(logHR, length.out = L),
-    se_shift   = rep(se_shift, length.out = L),
-    stringsAsFactors = FALSE
+    se_shift   = rep(se_shift, length.out = L)
   )
   rownames(df) <- as.character(df$Treatment)
   df

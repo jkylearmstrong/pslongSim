@@ -35,3 +35,13 @@ A data.frame with one row per treatment level and rownames equal to
 Creates a data frame mapping treatment levels to their effect parameters
 (adherence shift, outcome effect, log-hazard ratio, and side-effect shift).
 }
+\examples{
+map <- define_treatment_map(
+  c("Placebo", "Drug_A", "Drug_B"),
+  adh_shift  = c(0, -0.5, -0.9),
+  out_effect = c(0, 0.3, 0.7),
+  logHR      = c(0, -0.2, -0.5),
+  se_shift   = c(0, 0.2, 0.4)
+)
+map
+}

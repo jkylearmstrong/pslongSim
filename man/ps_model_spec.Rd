@@ -18,3 +18,12 @@ A \code{parsnip} model specification.
 \description{
 Returns a \pkg{parsnip} model specification for one of three PS engines.
 }
+\examples{
+# GLM specification (no extra dependencies)
+spec <- ps_model_spec("glm")
+
+# Ranger specification (requires ranger package)
+if (requireNamespace("ranger", quietly = TRUE)) {
+  spec_rf <- ps_model_spec("ranger")
+}
+}

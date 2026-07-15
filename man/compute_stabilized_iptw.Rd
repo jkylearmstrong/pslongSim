@@ -33,3 +33,15 @@ Calculates stabilised inverse probability of treatment weights using
 marginal and conditional (propensity-score) probabilities of compliance.
 Optionally truncates extreme weights at specified quantiles.
 }
+\examples{
+demo <- generate_patient_data_demographic(num_patients = 50, seed = 1)
+trt_map <- suppressWarnings(define_treatment_map(levels(demo$Treatment)))
+dat <- generate_longitudinal_data(demo, num_visits = 4, trt_map = trt_map)
+ps <- fit_ps_tidymodels(dat, model = "glm")
+dat$ps_hat <- ps$ps_hat
+dat_w <- compute_stabilized_iptw(dat)
+range(dat_w$w)
+}
+\seealso{
+\code{\link{fit_ps_tidymodels}}, \code{\link{fit_msm_gee_cont}}
+}

@@ -77,3 +77,61 @@ test_that("NL interaction has no additive main effect in linear model", {
   expect_true(abs(coef(m)["NL_Age_SideEffect"]) < 2,
               info = "NL interaction main effect should be near zero")
 })
+
+test_that("non-linear feature works with binary outcome", {
+  set.seed(10)
+  demo <- generate_patient_data_demographic(num_patients = 200, n_cohorts = 3)
+  trt_map <- suppressWarnings(define_treatment_map(levels(demo$Treatment)))
+
+  dat <- generate_longitudinal_data(
+    demo, num_visits = 4, trt_map = trt_map,
+    adherence_type = "binary", outcome_type = "binary",
+    non_linear_feature = TRUE,
+    nonlin_coefs = c("Age:SideEffect" = 0.20)
+  )
+  expect_true("NL_Age_SideEffect" %in% names(dat))
+  expect_true(all(dat$Outcome %in% c(0L, 1L)))
+  expect_equal(dat$NL_Age_SideEffect, dat$Age * dat$SideEffect)
+})
+
+test_that("non-linear feature works with TTE outcome", {
+  set.seed(10)
+  demo <- generate_patient_data_demographic(num_patients = 200, n_cohorts = 3)
+  trt_map <- suppressWarnings(define_treatment_map(levels(demo$Treatment)))
+
+  result <- generate_longitudinal_data(
+    demo, num_visits = 5, trt_map = trt_map,
+    adherence_type = "binary", outcome_type = "tte",
+    non_linear_feature = TRUE,
+    nonlin_coefs = c("Age:SideEffect" = 0.15)
+  )
+  expect_true("NL_Age_SideEffect" %in% names(result$long))
+  expect_true("NL_Age_SideEffect" %in% names(result$tte_intervals))
+  expect_false("NL_Age_SideEffect" %in% names(result$tte_subject))
+})
+
+test_that("nonlin_coefs warnings on malformed entries", {
+  set.seed(10)
+  demo <- generate_patient_data_demographic(num_patients = 30, n_cohorts = 3)
+  trt_map <- suppressWarnings(define_treatment_map(levels(demo$Treatment)))
+
+  expect_warning(
+    generate_longitudinal_data(
+      demo, num_visits = 3, trt_map = trt_map,
+      adherence_type = "binary", outcome_type = "continuous",
+      non_linear_feature = TRUE,
+      nonlin_coefs = c("Age+SideEffect" = 0.15)
+    ),
+    "does not follow"
+  )
+
+  expect_warning(
+    generate_longitudinal_data(
+      demo, num_visits = 3, trt_map = trt_map,
+      adherence_type = "binary", outcome_type = "continuous",
+      non_linear_feature = TRUE,
+      nonlin_coefs = c("FakeVar:SideEffect" = 0.15)
+    ),
+    "not in data"
+  )
+})

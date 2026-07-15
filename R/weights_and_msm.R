@@ -12,6 +12,15 @@
 #' @param truncate Numeric vector of length 2 giving the lower and upper
 #'   quantiles for weight trimming.  Set to \code{NULL} to disable.
 #' @return A data frame (the input with an additional \code{w} column).
+#' @seealso \code{\link{fit_ps_tidymodels}}, \code{\link{fit_msm_gee_cont}}
+#' @examples
+#' demo <- generate_patient_data_demographic(num_patients = 50, seed = 1)
+#' trt_map <- suppressWarnings(define_treatment_map(levels(demo$Treatment)))
+#' dat <- generate_longitudinal_data(demo, num_visits = 4, trt_map = trt_map)
+#' ps <- fit_ps_tidymodels(dat, model = "glm")
+#' dat$ps_hat <- ps$ps_hat
+#' dat_w <- compute_stabilized_iptw(dat)
+#' range(dat_w$w)
 #' @export
 compute_stabilized_iptw <- function(df,
                                     c_var = "Compliant",
@@ -60,6 +69,17 @@ filter_at_risk <- function(df) {
 #' @param df_w Weighted data frame with columns \code{Outcome},
 #'   \code{Treatment}, \code{VisitNumber}, \code{PatientID}, and \code{w}.
 #' @return A \code{geeglm} object.
+#' @seealso \code{\link{compute_stabilized_iptw}},
+#'   \code{\link{fit_msm_gee_bin}}, \code{\link{fit_msm_cox}}
+#' @examples
+#' demo <- generate_patient_data_demographic(num_patients = 50, seed = 1)
+#' trt_map <- suppressWarnings(define_treatment_map(levels(demo$Treatment)))
+#' dat <- generate_longitudinal_data(demo, num_visits = 4, trt_map = trt_map)
+#' ps <- fit_ps_tidymodels(dat, model = "glm")
+#' dat$ps_hat <- ps$ps_hat
+#' dat_w <- compute_stabilized_iptw(dat)
+#' msm <- fit_msm_gee_cont(dat_w)
+#' summary(msm)
 #' @export
 fit_msm_gee_cont <- function(df_w) {
   require_suggested("geepack")
@@ -126,6 +146,19 @@ fit_msm_gee_bin <- function(df_w) {
 #'   \code{tstart}, \code{tstop}, \code{event}, \code{Treatment},
 #'   \code{PatientID}, and \code{w}.
 #' @return A \code{coxph} object.
+#' @seealso \code{\link{compute_stabilized_iptw}},
+#'   \code{\link{fit_msm_gee_cont}}, \code{\link{filter_at_risk}}
+#' @examples
+#' demo <- generate_patient_data_demographic(num_patients = 50, seed = 1)
+#' trt_map <- suppressWarnings(define_treatment_map(levels(demo$Treatment)))
+#' tte <- generate_longitudinal_data(demo, num_visits = 6, trt_map = trt_map,
+#'                                   outcome_type = "tte")
+#' ivl <- filter_at_risk(tte$tte_intervals)
+#' ps <- fit_ps_tidymodels(ivl, model = "glm")
+#' ivl$ps_hat <- ps$ps_hat
+#' ivl_w <- compute_stabilized_iptw(ivl)
+#' cox_m <- fit_msm_cox(ivl_w)
+#' summary(cox_m)
 #' @export
 fit_msm_cox <- function(tte_ivl_w) {
   require_suggested("survival")

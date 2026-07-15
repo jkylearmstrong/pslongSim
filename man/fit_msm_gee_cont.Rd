@@ -18,3 +18,17 @@ Fits a generalised estimating equations marginal structural model for
 a continuous outcome, using an independence working correlation and
 robust (sandwich) standard errors.
 }
+\examples{
+demo <- generate_patient_data_demographic(num_patients = 50, seed = 1)
+trt_map <- suppressWarnings(define_treatment_map(levels(demo$Treatment)))
+dat <- generate_longitudinal_data(demo, num_visits = 4, trt_map = trt_map)
+ps <- fit_ps_tidymodels(dat, model = "glm")
+dat$ps_hat <- ps$ps_hat
+dat_w <- compute_stabilized_iptw(dat)
+msm <- fit_msm_gee_cont(dat_w)
+summary(msm)
+}
+\seealso{
+\code{\link{compute_stabilized_iptw}},
+  \code{\link{fit_msm_gee_bin}}, \code{\link{fit_msm_cox}}
+}

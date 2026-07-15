@@ -11,6 +11,9 @@
 #' @param treatment_prefix Character prefix for treatment level names.
 #' @return A data.frame with columns \code{PatientID}, \code{Age},
 #'   \code{Gender}, and \code{Treatment}.
+#' @examples
+#' demo <- generate_patient_data_demographic(num_patients = 100, seed = 1)
+#' head(demo)
 #' @export
 generate_patient_data_demographic <- function(
     num_patients = 1000,
@@ -93,6 +96,13 @@ generate_patient_data_demographic <- function(
 #' @return For continuous/binary outcomes: a \code{data.frame}. For TTE:
 #'   a list with elements \code{long}, \code{tte_intervals}, and
 #'   \code{tte_subject}.
+#' @seealso \code{\link{generate_patient_data_demographic}},
+#'   \code{\link{define_treatment_map}}, \code{\link{filter_at_risk}}
+#' @examples
+#' demo <- generate_patient_data_demographic(num_patients = 50, seed = 1)
+#' trt_map <- suppressWarnings(define_treatment_map(levels(demo$Treatment)))
+#' dat <- generate_longitudinal_data(demo, num_visits = 4, trt_map = trt_map)
+#' head(dat)
 #' @export
 generate_longitudinal_data <- function(
     patient_data,
@@ -214,7 +224,12 @@ generate_longitudinal_data <- function(
   visit_date <- start_date + nominal_days + jitter
 
   # Subject-level RE (u, v, w) with correlation
-  sd_u <- outcome_model$sd_subject
+  # u_i is the outcome frailty; for TTE use sd_frailty, otherwise sd_subject
+  sd_u <- if (identical(outcome_type, "tte")) {
+    tte_model$sd_frailty
+  } else {
+    outcome_model$sd_subject
+  }
   sd_v <- sd_adherence_re
   sd_w <- se_model$sd_subject
 
@@ -328,14 +343,8 @@ generate_longitudinal_data <- function(
   # Non-linear interaction features
   # Interactions are included ONLY as products; no additive main effects.
   # Linear models cannot detect these signals; tree-based models can.
-  if (non_linear_feature && length(nonlin_coefs) > 0L) {
-    for (nm in names(nonlin_coefs)) {
-      parts <- strsplit(nm, ":", fixed = TRUE)[[1L]]
-      if (length(parts) == 2L && all(parts %in% names(out_df))) {
-        col_name <- paste0("NL_", parts[1L], "_", parts[2L])
-        out_df[[col_name]] <- out_df[[parts[1L]]] * out_df[[parts[2L]]]
-      }
-    }
+  if (non_linear_feature) {
+    out_df <- build_nl_columns(out_df, nonlin_coefs)
   }
 
   # -- Outcome generation -----------------------------------------------------
@@ -349,16 +358,8 @@ generate_longitudinal_data <- function(
       outcome_model$time_trend * (visit - 1) +
       u_i
 
-    if (non_linear_feature && length(nonlin_coefs) > 0L) {
-      for (nm in names(nonlin_coefs)) {
-        parts <- strsplit(nm, ":", fixed = TRUE)[[1L]]
-        if (length(parts) == 2L) {
-          col_name <- paste0("NL_", parts[1L], "_", parts[2L])
-          if (col_name %in% names(out_df)) {
-            lp_out <- lp_out + nonlin_coefs[[nm]] * out_df[[col_name]]
-          }
-        }
-      }
+    if (non_linear_feature) {
+      lp_out <- add_nl_to_lp(lp_out, out_df, nonlin_coefs)
     }
 
     if (outcome_type == "continuous") {
@@ -380,16 +381,8 @@ generate_longitudinal_data <- function(
     tte_model$time_trend_logHR * (visit - 1) +
     u_i
 
-  if (non_linear_feature && length(nonlin_coefs) > 0L) {
-    for (nm in names(nonlin_coefs)) {
-      parts <- strsplit(nm, ":", fixed = TRUE)[[1L]]
-      if (length(parts) == 2L) {
-        col_name <- paste0("NL_", parts[1L], "_", parts[2L])
-        if (col_name %in% names(out_df)) {
-          lp_h <- lp_h + nonlin_coefs[[nm]] * out_df[[col_name]]
-        }
-      }
-    }
+  if (non_linear_feature) {
+    lp_h <- add_nl_to_lp(lp_h, out_df, nonlin_coefs)
   }
 
   h <- inv_logit(lp_h)
@@ -468,4 +461,67 @@ generate_longitudinal_data <- function(
     tte_intervals = tte_intervals,
     tte_subject   = tte_subject
   )
+}
+
+# --- Internal helpers for non-linear interactions ----------------------------
+
+#' Build non-linear interaction columns
+#'
+#' Parses \code{nonlin_coefs} names in \code{"VarA:VarB"} form, validates
+#' that both variables exist in \code{df}, and creates product columns named
+#' \code{NL_<VarA>_<VarB}.
+#'
+#' @param df Data frame containing the predictor variables.
+#' @param nonlin_coefs Named numeric vector; names must be \code{"VarA:VarB"}.
+#' @return \code{df} with additional \code{NL_*} columns (invisibly).
+#' @keywords internal
+build_nl_columns <- function(df, nonlin_coefs) {
+  if (length(nonlin_coefs) == 0L) return(df)
+  nm_names <- names(nonlin_coefs)
+  for (i in seq_along(nonlin_coefs)) {
+    nm <- nm_names[i]
+    parts <- strsplit(nm, ":", fixed = TRUE)[[1L]]
+    if (length(parts) != 2L) {
+      warning("nonlin_coefs: '", nm, "' does not follow 'VarA:VarB' format, skipping.")
+      next
+    }
+    if (!all(parts %in% names(df))) {
+      missing <- setdiff(parts, names(df))
+      warning("nonlin_coefs: variable(s) ", paste(missing, collapse = ", "),
+              " not in data, skipping '", nm, "'.")
+      next
+    }
+    col_name <- paste0("NL_", parts[1L], "_", parts[2L])
+    if (!col_name %in% names(df)) {
+      df[[col_name]] <- df[[parts[1L]]] * df[[parts[2L]]]
+    }
+  }
+  df
+}
+
+#' Add non-linear terms to a linear predictor vector
+#'
+#' For each entry in \code{nonlin_coefs}, looks up the corresponding
+#' \code{NL_<VarA>_<VarB>} column in \code{df} and adds the weighted
+#' interaction to \code{lp}.
+#'
+#' @param lp Numeric vector (linear predictor, modified in place).
+#' @param df Data frame containing the \code{NL_*} columns.
+#' @param nonlin_coefs Named numeric vector of interaction coefficients.
+#' @return Updated linear predictor \code{lp}.
+#' @keywords internal
+add_nl_to_lp <- function(lp, df, nonlin_coefs) {
+  if (length(nonlin_coefs) == 0L) return(lp)
+  nm_names <- names(nonlin_coefs)
+  for (i in seq_along(nonlin_coefs)) {
+    nm <- nm_names[i]
+    parts <- strsplit(nm, ":", fixed = TRUE)[[1L]]
+    if (length(parts) == 2L) {
+      col_name <- paste0("NL_", parts[1L], "_", parts[2L])
+      if (col_name %in% names(df)) {
+        lp <- lp + nonlin_coefs[[i]] * df[[col_name]]
+      }
+    }
+  }
+  lp
 }

@@ -18,3 +18,19 @@ A \code{coxph} object.
 Fits a Cox proportional hazards marginal structural model using
 start-stop interval data and robust (cluster-robust) standard errors.
 }
+\examples{
+demo <- generate_patient_data_demographic(num_patients = 50, seed = 1)
+trt_map <- suppressWarnings(define_treatment_map(levels(demo$Treatment)))
+tte <- generate_longitudinal_data(demo, num_visits = 6, trt_map = trt_map,
+                                  outcome_type = "tte")
+ivl <- filter_at_risk(tte$tte_intervals)
+ps <- fit_ps_tidymodels(ivl, model = "glm")
+ivl$ps_hat <- ps$ps_hat
+ivl_w <- compute_stabilized_iptw(ivl)
+cox_m <- fit_msm_cox(ivl_w)
+summary(cox_m)
+}
+\seealso{
+\code{\link{compute_stabilized_iptw}},
+  \code{\link{fit_msm_gee_cont}}, \code{\link{filter_at_risk}}
+}
