@@ -1,3 +1,13 @@
+# pslongSim 0.3.5
+
+## CRAN Readiness
+
+* Fixed Title field to comply with CRAN policy: removed package name
+  prefix (was `pslongSim: Longitudinal Propensity Score Simulation`,
+  now `Longitudinal Propensity Score Simulation for Clinical Trials`).
+  This eliminates the CRAN NOTE about the Title starting with the
+  package name.
+
 # pslongSim 0.3.4
 
 ## Bug Fixes
