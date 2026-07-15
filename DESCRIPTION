@@ -1,20 +1,23 @@
 Package: pslongSim
 Type: Package
 Title: pslongSim: Longitudinal Propensity Score Simulation
-Version: 0.2.0
+Version: 0.3.0
 Authors@R: person(
     "J Kyle", "Armstrong",
     role = c("aut", "cre"),
     email = "j.kyle.armstrong@temple.edu",
     comment = c(ORCID = "0000-0002-4269-0121")
   )
-Description: Simulation framework for longitudinal propensity score models 
-    to adjust for non-adherence in clinical trials.
+Description: Simulation framework for longitudinal propensity score models
+    to adjust for non-adherence in clinical trials.  Includes a
+    non-linear feature generator that produces interaction effects
+    detectable by tree-based models but not by linear regression.
 License: GPL-3
 Encoding: UTF-8
 LazyData: true
-Imports: 
-    dplyr (>= 1.1.0),
+Depends:
+    R (>= 4.1.0)
+Imports:
     recipes (>= 1.0.0),
     parsnip (>= 1.1.0),
     workflows (>= 1.1.0),
@@ -23,15 +26,16 @@ Imports:
     yardstick (>= 1.2.0),
     geepack (>= 1.3.0),
     xgboost (>= 1.7.0),
-    targets (>= 1.2.0),
     survival (>= 3.5-0),
     ranger (>= 0.15.0),
-    MASS,
     dials (>= 1.1.0)
-Suggests: 
+Suggests:
     testthat (>= 3.0.0),
     knitr,
-    rmarkdown
+    rmarkdown,
+    targets (>= 1.2.0),
+    MASS,
+    withr
 VignetteBuilder: knitr
 Config/testthat/edition: 3
 URL: https://github.com/jkylearmstrong/pslongSim

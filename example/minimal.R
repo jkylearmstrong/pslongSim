@@ -7,15 +7,22 @@ set.seed(1)
 demo <- generate_patient_data_demographic(num_patients = 400, n_cohorts = 3)
 trt_map <- define_treatment_map(
   levels(demo$Treatment),
-  adh_shift = c(Treatment_1=0, Treatment_2=-0.5, Treatment_3=-0.9),
-  out_effect= c(Treatment_1=0, Treatment_2= 0.3, Treatment_3= 0.7),
-  logHR     = c(Treatment_1=0, Treatment_2=-0.2, Treatment_3=-0.5),
-  se_shift  = c(Treatment_1=0, Treatment_2= 0.2, Treatment_3= 0.4)
+  adh_shift  = c(Treatment_1 = 0, Treatment_2 = -0.5, Treatment_3 = -0.9),
+  out_effect = c(Treatment_1 = 0, Treatment_2 = 0.3,  Treatment_3 = 0.7),
+  logHR      = c(Treatment_1 = 0, Treatment_2 = -0.2, Treatment_3 = -0.5),
+  se_shift   = c(Treatment_1 = 0, Treatment_2 = 0.2,  Treatment_3 = 0.4)
 )
 
-# Continuous outcome with AR(1) biomarker, Beta adherence
-dat <- generate_longitudinal_data(demo, num_visits=6, trt_map=trt_map,
-                                  adherence_type="beta", outcome_type="continuous")
+# Continuous outcome with AR(1) biomarker, Beta adherence, non-linear feature
+dat <- generate_longitudinal_data(demo, num_visits = 6, trt_map = trt_map,
+                                  adherence_type = "beta",
+                                  outcome_type = "continuous",
+                                  non_linear_feature = TRUE)
+
+# The NL_Feature column (Age x SideEffect interaction) is undetectable
+# by linear regression but detectable by random forest / XGBoost:
+cat("NL_Feature present:", "NL_Feature" %in% names(dat), "\n")
+cat("Column names:", paste(names(dat), collapse = ", "), "\n")
 
 # Tidymodels PS (GLM)
 ps <- fit_ps_tidymodels(dat, model = "glm")
@@ -25,9 +32,11 @@ m <- fit_msm_gee_cont(dat_w)
 summary(m)
 
 # Cox MSM from TTE
-dat_tte <- generate_longitudinal_data(demo, num_visits=8, trt_map=trt_map,
-                                      adherence_type="binary", outcome_type="tte")
-ivl <- subset(dat_tte$tte_intervals, AtRisk == 1)
+dat_tte <- generate_longitudinal_data(demo, num_visits = 8, trt_map = trt_map,
+                                      adherence_type = "binary",
+                                      outcome_type = "tte",
+                                      non_linear_feature = TRUE)
+ivl <- filter_at_risk(dat_tte$tte_intervals)
 ps2 <- fit_ps_tidymodels(ivl, model = "ranger")
 ivl$ps_hat <- ps2$ps_hat
 ivl_w <- compute_stabilized_iptw(ivl)

@@ -2,15 +2,19 @@
 % Please edit documentation in R/ps_tidymodels.R
 \name{ps_model_spec}
 \alias{ps_model_spec}
-\title{Model spec factory for PS}
+\title{Model Specification Factory for Propensity Scores}
 \usage{
 ps_model_spec(model = c("glm", "xgboost", "ranger"), tune = FALSE)
 }
 \arguments{
-\item{model}{One of "glm","xgboost","ranger".}
+\item{model}{One of \code{"glm"}, \code{"xgboost"}, or \code{"ranger"}.}
 
-\item{tune}{Logical; if TRUE, uses tune() placeholders for parameters.}
+\item{tune}{Logical; if \code{TRUE}, tuning placeholders are added for
+\code{mtry} (relevant for \code{"xgboost"} and \code{"ranger"}).}
+}
+\value{
+A \code{parsnip} model specification.
 }
 \description{
-Model spec factory for PS
+Returns a \pkg{parsnip} model specification for one of three PS engines.
 }

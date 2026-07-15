@@ -1,10 +1,16 @@
 #' Generate Demographics
+#'
+#' Creates a baseline patient data frame with IDs, ages, genders, and
+#' randomised treatment assignments.
+#'
 #' @param num_patients Total number of patients.
-#' @param seed Random seed.
+#' @param seed Random seed (note: sets the global RNG state).
 #' @param n_cohorts Number of treatment cohorts.
-#' @param age_range Range of patient ages.
-#' @param gender_levels Levels for gender variable.
-#' @param treatment_prefix Prefix for treatment names.
+#' @param age_range Integer vector of length 2 giving the age range.
+#' @param gender_levels Character vector of gender levels.
+#' @param treatment_prefix Character prefix for treatment level names.
+#' @return A data.frame with columns \code{PatientID}, \code{Age},
+#'   \code{Gender}, and \code{Treatment}.
 #' @export
 generate_patient_data_demographic <- function(
     num_patients = 1000,
@@ -14,42 +20,73 @@ generate_patient_data_demographic <- function(
     gender_levels = c("Male", "Female"),
     treatment_prefix = "Treatment_"
 ) {
-  stopifnot(length(age_range) == 2, age_range[1] < age_range[2])
+  stopifnot(
+    "`num_patients` must be a positive integer." = is.numeric(num_patients) && num_patients >= 1L,
+    "`age_range` must be length 2 with age_range[1] < age_range[2]." =
+      length(age_range) == 2L && age_range[1] < age_range[2]
+  )
   set.seed(seed)
 
   patient_ids <- paste0("P", sprintf("%04d", seq_len(num_patients)))
   ages <- sample(seq.int(age_range[1], age_range[2]), num_patients, replace = TRUE)
   genders <- sample(gender_levels, num_patients, replace = TRUE)
-  treatments <- sample(paste0(treatment_prefix, seq_len(n_cohorts)), num_patients, replace = TRUE)
+  treatments <- sample(paste0(treatment_prefix, seq_len(n_cohorts)),
+                       num_patients, replace = TRUE)
 
   data.frame(
     PatientID = patient_ids,
-    Age = ages,
-    Gender = factor(genders, levels = gender_levels),
-    Treatment = factor(treatments, levels = paste0(treatment_prefix, seq_len(n_cohorts))),
-    stringsAsFactors = FALSE
+    Age       = ages,
+    Gender    = factor(genders, levels = gender_levels),
+    Treatment = factor(treatments,
+                       levels = paste0(treatment_prefix, seq_len(n_cohorts)))
   )
 }
 
-#' Generate Longitudinal Data with Side-Effects, AR(1) Biomarker, and Multiple Outcome Types
+#' Generate Longitudinal Data with Side-Effects, AR(1) Biomarker,
+#' and Multiple Outcome Types
 #'
-#' @param patient_data Data frame from generate_patient_data_demographic().
-#' @param num_visits Integer.
-#' @param seed Integer.
-#' @param trt_map Output of define_treatment_map().
+#' Simulates a longitudinal clinical trial dataset with treatment-driven
+#' side effects, an AR(1) biomarker process, time-varying adherence,
+#' and one of three outcome types (continuous, binary, or time-to-event).
+#'
+#' @section Non-linear feature:
+#' When \code{non_linear_feature = TRUE} (the default), a multiplicative
+#' interaction \code{Age * SideEffect} is added to the outcome with no
+#' additive main effects.  This creates a signal that is
+#' \strong{undetectable} by linear regression (which can only model additive
+#' effects of \code{Age} and \code{SideEffect}) but \strong{readily
+#' detectable} by tree-based models such as random forests or XGBoost,
+#' which naturally partition on feature interactions.
+#'
+#' @param patient_data Data frame from \code{generate_patient_data_demographic()}.
+#' @param num_visits Integer number of study visits.
+#' @param seed Integer random seed (note: sets the global RNG state).
+#' @param trt_map Output of \code{define_treatment_map()}.
 #' @param se_model List of side-effect model parameters.
-#' @param adherence_type "binary" or "beta".
-#' @param adherence_model List of adherence parameters (includes se_effect and biomarker_effect).
-#' @param beta_concentration Numeric for beta adherence dispersion.
-#' @param compliance_threshold Numeric (if adherence_type == "beta").
-#' @param sd_adherence_re SD for adherence random effect v_i.
-#' @param outcome_type "continuous" | "binary" | "tte".
-#' @param outcome_model List of outcome parameters (includes se_effect and biomarker_effect).
-#' @param tte_model List for TTE hazard model (includes biomarker_logHR).
-#' @param biom_model List for AR(1) biomarker parameters.
-#' @param rho_uv,rho_uw,rho_vw Correlations among outcome/adherence/SE subject effects.
-#' @param start_date,visit_spacing_days,visit_jitter_days Visit scheduling.
-#' @return For continuous/binary outcomes: a long data.frame. For TTE: a list with long, tte_intervals, tte_subject.
+#' @param adherence_type \code{"binary"} or \code{"beta"}.
+#' @param adherence_model List of adherence parameters.
+#' @param beta_concentration Numeric concentration parameter for beta
+#'   adherence.
+#' @param compliance_threshold Numeric threshold for beta adherence
+#'   compliance.
+#' @param sd_adherence_re SD for the adherence random effect.
+#' @param outcome_type \code{"continuous"}, \code{"binary"}, or
+#'   \code{"tte"}.
+#' @param outcome_model List of outcome model parameters.
+#' @param non_linear_feature Logical; if \code{TRUE}, adds an Age x
+#'   SideEffect interaction to the outcome with no additive main effects.
+#' @param tte_model List for the TTE hazard model.
+#' @param biom_model List for the AR(1) biomarker parameters.
+#' @param rho_uv Correlation between outcome and adherence subject effects.
+#' @param rho_uw Correlation between outcome and side-effect subject effects.
+#' @param rho_vw Correlation between adherence and side-effect subject effects.
+#' @param start_date Date of the first visit.
+#' @param visit_spacing_days Nominal number of days between visits.
+#' @param visit_jitter_days Maximum random jitter (in days) added to each
+#'   visit date.
+#' @return For continuous/binary outcomes: a \code{data.frame}. For TTE:
+#'   a list with elements \code{long}, \code{tte_intervals}, and
+#'   \code{tte_subject}.
 #' @export
 generate_longitudinal_data <- function(
     patient_data,
@@ -68,13 +105,13 @@ generate_longitudinal_data <- function(
     # Adherence model
     adherence_type = c("binary", "beta"),
     adherence_model = list(
-      intercept       = -0.3,
-      age             = -0.005,
-      male            = -0.10,
-      time_trend      =  0.04,
-      lag_comp        =  0.80,
-      se_effect       = -0.7,
-      biomarker_effect=  0.25   # higher biomarker improves adherence if positive
+      intercept        = -0.3,
+      age              = -0.005,
+      male             = -0.10,
+      time_trend       =  0.04,
+      lag_comp         =  0.80,
+      se_effect        = -0.7,
+      biomarker_effect =  0.25
     ),
     beta_concentration = 25,
     compliance_threshold = 0.80,
@@ -82,29 +119,31 @@ generate_longitudinal_data <- function(
     # Outcome
     outcome_type = c("continuous", "binary", "tte"),
     outcome_model = list(
-      intercept        = 0.0,    # for continuous: mean; for binary: logit
+      intercept        = 0.0,
       adherence        = 0.9,
       se_effect        = -0.5,
       biomarker_effect = 0.40,
       time_trend       = 0.05,
       sd_subject       = 0.7,
-      sd_error         = 1.0     # only used for continuous
+      sd_error         = 1.0
     ),
+    # Non-linear feature toggle
+    non_linear_feature = TRUE,
     # TTE hazard (discrete-time)
     tte_model = list(
       baseline_logit_h = -3.2,
       adherence_logHR  = -0.5,
       se_logHR         =  0.4,
-      biomarker_logHR  = -0.25,  # protective if negative
+      biomarker_logHR  = -0.25,
       time_trend_logHR =  0.00,
       sd_frailty       =  0.6
     ),
     # AR(1) biomarker
     biom_model = list(
-      intercept = 0.0,     # mean level
-      phi       = 0.75,    # AR(1) coefficient
-      sd_innov  = 0.5,     # innovation SD
-      sd_b0     = 0.75     # subject-specific baseline SD
+      intercept = 0.0,
+      phi       = 0.75,
+      sd_innov  = 0.5,
+      sd_b0     = 0.75
     ),
     # RE correlations
     rho_uv = 0.4,
@@ -115,30 +154,56 @@ generate_longitudinal_data <- function(
     visit_spacing_days = 28,
     visit_jitter_days  = 5
 ) {
-  set.seed(seed)
-  stopifnot(is.factor(patient_data$Treatment))
-  trt_levels <- levels(patient_data$Treatment)
-  req_cols <- c("adh_shift","out_effect","logHR","se_shift")
-  stopifnot(all(trt_levels %in% rownames(trt_map)), all(req_cols %in% colnames(trt_map)))
+  # -- Input validation -------------------------------------------------------
+  if (!is.data.frame(patient_data)) {
+    stop("generate_longitudinal_data: `patient_data` must be a data.frame.")
+  }
+  required_demo <- c("PatientID", "Age", "Gender", "Treatment")
+  validate_columns(patient_data, required_demo, "generate_longitudinal_data")
+  if (!is.factor(patient_data$Treatment)) {
+    stop("generate_longitudinal_data: `patient_data$Treatment` must be a factor.")
+  }
+  stopifnot(
+    "`num_visits` must be a positive integer." =
+      is.numeric(num_visits) && num_visits >= 1L,
+    "`trt_map` must be a data.frame." = is.data.frame(trt_map)
+  )
 
   adherence_type <- match.arg(adherence_type)
   outcome_type   <- match.arg(outcome_type)
+
+  trt_levels <- levels(patient_data$Treatment)
+  req_trt_cols <- c("adh_shift", "out_effect", "logHR", "se_shift")
+  if (!all(trt_levels %in% rownames(trt_map))) {
+    stop("generate_longitudinal_data: trt_map is missing rows for treatment levels: ",
+         paste(setdiff(trt_levels, rownames(trt_map)), collapse = ", "))
+  }
+  if (!all(req_trt_cols %in% colnames(trt_map))) {
+    stop("generate_longitudinal_data: trt_map is missing columns: ",
+         paste(setdiff(req_trt_cols, colnames(trt_map)), collapse = ", "))
+  }
+
+  set.seed(seed)
 
   n     <- nrow(patient_data)
   T_vis <- num_visits
 
   # Long index
-  long_index <- expand.grid(PatientRow = seq_len(n), VisitNumber = seq_len(T_vis))
-  long_index <- long_index[order(long_index$PatientRow, long_index$VisitNumber), ]
+  long_index <- expand.grid(PatientRow = seq_len(n),
+                            VisitNumber = seq_len(T_vis))
+  long_index <- long_index[order(long_index$PatientRow,
+                                  long_index$VisitNumber), ]
 
-  id     <- patient_data$PatientID[long_index$PatientRow]
-  trt    <- patient_data$Treatment[long_index$PatientRow]
-  age    <- patient_data$Age[long_index$PatientRow]
-  male   <- as.integer(patient_data$Gender[long_index$PatientRow] == "Male")
-  visit  <- long_index$VisitNumber
+  id    <- patient_data$PatientID[long_index$PatientRow]
+  trt   <- patient_data$Treatment[long_index$PatientRow]
+  age   <- patient_data$Age[long_index$PatientRow]
+  male  <- as.integer(patient_data$Gender[long_index$PatientRow] == "Male")
+  visit <- long_index$VisitNumber
 
   nominal_days <- (visit - 1L) * visit_spacing_days
-  jitter <- sample.int(2 * visit_jitter_days + 1L, length(nominal_days), replace = TRUE) - (visit_jitter_days + 1L)
+  jitter <- sample.int(2 * visit_jitter_days + 1L,
+                       length(nominal_days), replace = TRUE) -
+    (visit_jitter_days + 1L)
   visit_date <- start_date + nominal_days + jitter
 
   # Subject-level RE (u, v, w) with correlation
@@ -151,7 +216,7 @@ generate_longitudinal_data <- function(
                 rho_uw, rho_vw, 1), 3, 3, byrow = TRUE)
   S <- diag(c(sd_u, sd_v, sd_w))
   Sigma <- S %*% R %*% S
-  if (!requireNamespace("MASS", quietly = TRUE)) stop("Install MASS")
+  require_suggested("MASS")
   uvw <- MASS::mvrnorm(n = n, mu = c(0, 0, 0), Sigma = Sigma)
   u_i <- uvw[, 1][long_index$PatientRow]
   v_i <- uvw[, 2][long_index$PatientRow]
@@ -162,11 +227,11 @@ generate_longitudinal_data <- function(
   b0 <- b0_subj[long_index$PatientRow]
 
   # Treatment shifts
-  trt_names <- as.character(trt)
-  trt_adh_shift <- trt_map[trt_names, "adh_shift"]
+  trt_names      <- as.character(trt)
+  trt_adh_shift  <- trt_map[trt_names, "adh_shift"]
   trt_out_effect <- trt_map[trt_names, "out_effect"]
-  trt_se_shift <- trt_map[trt_names, "se_shift"]
-  trt_logHR <- trt_map[trt_names, "logHR"]
+  trt_se_shift   <- trt_map[trt_names, "se_shift"]
+  trt_logHR      <- trt_map[trt_names, "logHR"]
 
   # Precompute base LPs
   lp_se_base <- se_model$intercept +
@@ -174,15 +239,17 @@ generate_longitudinal_data <- function(
     se_model$time_trend * (visit - 1) + w_i
 
   lp_adh_base <- adherence_model$intercept +
-    trt_adh_shift + adherence_model$age * age + adherence_model$male * male +
+    trt_adh_shift + adherence_model$age * age +
+    adherence_model$male * male +
     adherence_model$time_trend * (visit - 1) + v_i
 
   # Containers
-  SE  <- integer(length(visit))
-  Adh <- numeric(length(visit))
-  Comp <- integer(length(visit))
-  Biom <- numeric(length(visit))
-  Event <- integer(length(visit))
+  n_long <- length(visit)
+  SE    <- integer(n_long)
+  Adh   <- numeric(n_long)
+  Comp  <- integer(n_long)
+  Biom  <- numeric(n_long)
+  Event <- integer(n_long)
 
   # Helper index
   idx_fun <- function(j, t) (j - 1L) * T_vis + t
@@ -191,15 +258,16 @@ generate_longitudinal_data <- function(
   for (j in seq_len(n)) {
     prev_se   <- 0L
     prev_comp <- 0L
-    # Biomarker AR(1) initialization
-    # Stationary variance: sd = sd_innov / sqrt(1 - phi^2), but we start around b0
-    b_prev <- b0_subj[j] + rnorm(1, 0, biom_model$sd_innov / sqrt(1 - biom_model$phi^2 + 1e-8))
+    b_prev <- b0_subj[j] +
+      rnorm(1, 0, biom_model$sd_innov /
+              sqrt(1 - biom_model$phi^2 + 1e-8))
 
     for (t in seq_len(T_vis)) {
       idx <- idx_fun(j, t)
 
-      # AR(1) biomarker at visit t
-      b_t <- biom_model$intercept + biom_model$phi * (b_prev - biom_model$intercept) +
+      # AR(1) biomarker
+      b_t <- biom_model$intercept +
+        biom_model$phi * (b_prev - biom_model$intercept) +
         rnorm(1, 0, biom_model$sd_innov)
       Biom[idx] <- b_t
       b_prev <- b_t
@@ -209,7 +277,7 @@ generate_longitudinal_data <- function(
       p_se  <- inv_logit(lp_se)
       se_t  <- rbinom(1L, 1L, clamp(p_se, 1e-6, 1 - 1e-6))
 
-      # Adherence (depends on SE and biomarker)
+      # Adherence
       lp_adh <- lp_adh_base[idx] +
         adherence_model$lag_comp * prev_comp +
         adherence_model$se_effect * se_t +
@@ -220,10 +288,10 @@ generate_longitudinal_data <- function(
         comp_t <- rbinom(1L, 1L, clamp(p_adh, 1e-6, 1 - 1e-6))
         adh_t  <- as.numeric(comp_t)
       } else {
-        k  <- beta_concentration
-        a  <- max(p_adh * k, 1e-6)
-        b  <- max((1 - p_adh) * k, 1e-6)
-        adh_t <- stats::rbeta(1L, a, b)
+        k <- beta_concentration
+        a <- max(p_adh * k, 1e-6)
+        b <- max((1 - p_adh) * k, 1e-6)
+        adh_t  <- stats::rbeta(1L, a, b)
         comp_t <- as.integer(adh_t >= compliance_threshold)
       }
 
@@ -247,18 +315,32 @@ generate_longitudinal_data <- function(
     SideEffect  = SE,
     Adherence   = Adh,
     Compliant   = Comp,
-    Biomarker   = Biom,
-    stringsAsFactors = FALSE
+    Biomarker   = Biom
   )
 
-  if (outcome_type %in% c("continuous","binary")) {
+  # Non-linear interaction feature (Age x SideEffect)
+  # This term is included ONLY as a product; no additive Age or SideEffect
+  # main effects are added.  Linear models (which model additive effects
+  # only) cannot detect this signal, while tree-based models (random forest,
+  # XGBoost) naturally partition on it.
+  if (non_linear_feature) {
+    out_df$NL_Feature <- out_df$Age * out_df$SideEffect
+  }
+
+  # -- Outcome generation -----------------------------------------------------
+  if (outcome_type %in% c("continuous", "binary")) {
     lp_out <- outcome_model$intercept +
       trt_out_effect +
-      outcome_model$adherence * if (adherence_type == "binary") Comp else Adh +
+      outcome_model$adherence *
+        if (adherence_type == "binary") Comp else Adh +
       outcome_model$se_effect * SE +
       outcome_model$biomarker_effect * Biom +
       outcome_model$time_trend * (visit - 1) +
       u_i
+
+    if (non_linear_feature) {
+      lp_out <- lp_out + 0.15 * out_df$NL_Feature
+    }
 
     if (outcome_type == "continuous") {
       Y <- lp_out + rnorm(nrow(out_df), 0, outcome_model$sd_error)
@@ -279,27 +361,35 @@ generate_longitudinal_data <- function(
     tte_model$time_trend_logHR * (visit - 1) +
     u_i
 
+  if (non_linear_feature) {
+    lp_h <- lp_h + 0.10 * out_df$NL_Feature
+  }
+
   h <- inv_logit(lp_h)
   Event <- rbinom(nrow(out_df), 1L, clamp(h, 1e-6, 1 - 1e-6))
 
-  out_df$Event <- 0L
+  out_df$Event  <- 0L
   out_df$AtRisk <- 1L
 
-  first_event_row <- tapply(seq_len(nrow(out_df)), out_df$PatientID, function(idx_rows) {
-    ev_rows <- idx_rows[Event[idx_rows] == 1]
-    if (length(ev_rows) == 0) NA_integer_ else ev_rows[1]
-  })
+  # Vectorised first-event identification (avoids O(n^2) loop)
+  first_event_row <- tapply(
+    seq_len(nrow(out_df)), out_df$PatientID,
+    function(idx_rows) {
+      ev_rows <- idx_rows[Event[idx_rows] == 1]
+      if (length(ev_rows) == 0L) NA_integer_ else ev_rows[1L]
+    }
+  )
   first_event_row <- unlist(first_event_row, use.names = FALSE)
 
-  for (j in seq_len(n)) {
-    pid <- patient_data$PatientID[j]
-    rows <- which(out_df$PatientID == pid)
+  # Assign events and censoring using vectorised row indexing
+  non_na <- which(!is.na(first_event_row))
+  for (j in non_na) {
+    pid    <- patient_data$PatientID[j]
     fe_row <- first_event_row[j]
-    if (!is.na(fe_row)) {
-      out_df$Event[fe_row] <- 1L
-      later <- rows[rows > fe_row]
-      if (length(later)) out_df$AtRisk[later] <- 0L
-    }
+    rows   <- which(out_df$PatientID == pid)
+    out_df$Event[fe_row] <- 1L
+    later <- rows[rows > fe_row]
+    if (length(later)) out_df$AtRisk[later] <- 0L
   }
 
   # Start-stop intervals
@@ -319,26 +409,34 @@ generate_longitudinal_data <- function(
       Compliant   = df_i$Compliant,
       Adherence   = df_i$Adherence,
       Biomarker   = df_i$Biomarker,
+      NL_Feature  = df_i$NL_Feature,
       tstart      = tstart,
       tstop       = tstop,
       event       = df_i$Event,
-      AtRisk      = df_i$AtRisk,
-      stringsAsFactors = FALSE
+      AtRisk      = df_i$AtRisk
     )
   }))
 
-  subj_event <- aggregate(event ~ PatientID, data = tte_intervals, FUN = function(x) any(x == 1))
+  subj_event <- aggregate(
+    event ~ PatientID, data = tte_intervals,
+    FUN = function(x) any(x == 1)
+  )
   names(subj_event)[2] <- "status"
-  subj_time  <- aggregate(tstop ~ PatientID, data = subset(tte_intervals, AtRisk == 1),
-                          FUN = function(x) max(x, na.rm = TRUE))
+
+  at_risk_df <- filter_at_risk(tte_intervals)
+  subj_time <- aggregate(
+    tstop ~ PatientID, data = at_risk_df,
+    FUN = function(x) max(x, na.rm = TRUE)
+  )
   names(subj_time)[2] <- "time"
+
   tte_subject <- merge(subj_time, subj_event, by = "PatientID", all.x = TRUE)
   tte_subject$status[is.na(tte_subject$status)] <- 0L
   tte_subject$status <- as.integer(tte_subject$status)
 
   list(
-    long = out_df,
+    long          = out_df,
     tte_intervals = tte_intervals,
-    tte_subject = tte_subject
+    tte_subject   = tte_subject
   )
 }

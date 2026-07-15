@@ -13,19 +13,25 @@ define_treatment_map(
 )
 }
 \arguments{
-\item{levels}{Character vector of treatment levels.}
+\item{levels}{Character vector of treatment levels (must be non-empty).}
 
-\item{adh_shift}{Numeric vector: logit shift for adherence.}
+\item{adh_shift}{Numeric vector: logit shift for adherence. Recycled to
+match \code{length(levels)}; a length mismatch generates a warning.}
 
-\item{out_effect}{Numeric vector: main effect for outcome (continuous/binary).}
+\item{out_effect}{Numeric vector: main effect for outcome (continuous/binary).
+Recycled with warning on length mismatch.}
 
-\item{logHR}{Numeric vector: log-hazard ratio for TTE.}
+\item{logHR}{Numeric vector: log-hazard ratio for TTE.
+Recycled with warning on length mismatch.}
 
-\item{se_shift}{Numeric vector: logit shift for side-effect risk.}
+\item{se_shift}{Numeric vector: logit shift for side-effect risk.
+Recycled with warning on length mismatch.}
 }
 \value{
-A data.frame with one row per treatment level.
+A data.frame with one row per treatment level and rownames equal to
+  the treatment level strings.
 }
 \description{
-Define Treatment Relationship Map
+Creates a data frame mapping treatment levels to their effect parameters
+(adherence shift, outcome effect, log-hazard ratio, and side-effect shift).
 }

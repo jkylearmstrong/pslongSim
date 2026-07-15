@@ -9,10 +9,13 @@ clamp(x, lower, upper)
 \arguments{
 \item{x}{Numeric vector.}
 
-\item{lower}{Lower bound.}
+\item{lower}{Lower bound (must be <= upper).}
 
-\item{upper}{Upper bound.}
+\item{upper}{Upper bound (must be >= lower).}
+}
+\value{
+Numeric vector with values clamped to \code{[lower, upper]}.
 }
 \description{
-Clamp Numeric Values
+Constrains a numeric vector to lie within \code{[lower, upper]}.
 }

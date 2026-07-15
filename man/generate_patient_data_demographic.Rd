@@ -16,16 +16,21 @@ generate_patient_data_demographic(
 \arguments{
 \item{num_patients}{Total number of patients.}
 
-\item{seed}{Random seed.}
+\item{seed}{Random seed (note: sets the global RNG state).}
 
 \item{n_cohorts}{Number of treatment cohorts.}
 
-\item{age_range}{Range of patient ages.}
+\item{age_range}{Integer vector of length 2 giving the age range.}
 
-\item{gender_levels}{Levels for gender variable.}
+\item{gender_levels}{Character vector of gender levels.}
 
-\item{treatment_prefix}{Prefix for treatment names.}
+\item{treatment_prefix}{Character prefix for treatment level names.}
+}
+\value{
+A data.frame with columns \code{PatientID}, \code{Age},
+  \code{Gender}, and \code{Treatment}.
 }
 \description{
-Generate Demographics
+Creates a baseline patient data frame with IDs, ages, genders, and
+randomised treatment assignments.
 }

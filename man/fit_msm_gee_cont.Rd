@@ -7,8 +7,14 @@
 fit_msm_gee_cont(df_w)
 }
 \arguments{
-\item{df_w}{Weighted data frame.}
+\item{df_w}{Weighted data frame with columns \code{Outcome},
+\code{Treatment}, \code{VisitNumber}, \code{PatientID}, and \code{w}.}
+}
+\value{
+A \code{geeglm} object.
 }
 \description{
-Fit GEE MSM for Continuous Outcomes
+Fits a generalised estimating equations marginal structural model for
+a continuous outcome, using an independence working correlation and
+robust (sandwich) standard errors.
 }

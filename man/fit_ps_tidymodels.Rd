@@ -2,30 +2,41 @@
 % Please edit documentation in R/ps_tidymodels.R
 \name{fit_ps_tidymodels}
 \alias{fit_ps_tidymodels}
-\title{Fit PS with Tidymodels}
+\title{Fit a Propensity Score Model via Tidymodels}
 \usage{
 fit_ps_tidymodels(
   df,
   model = c("glm", "xgboost", "ranger"),
+  outcome = "Compliant",
+  predictors = NULL,
   tune_ps = FALSE,
   resamples = NULL,
   grid = 20L
 )
 }
 \arguments{
-\item{df}{Data frame containing outcome and predictors.}
+\item{df}{Data frame containing the outcome and predictor columns.}
 
-\item{model}{"glm","xgboost","ranger".}
+\item{model}{One of \code{"glm"}, \code{"xgboost"}, or \code{"ranger"}.}
 
-\item{tune_ps}{If TRUE, performs tuning with rsample vfold_cv and tune_grid.}
+\item{outcome}{Character: name of the binary outcome column.}
 
-\item{resamples}{Optional rsample object; default 5-fold vfold.}
+\item{predictors}{Character vector of predictor column names (passed to
+\code{ps_recipe()}).  Use \code{NULL} for the default set.}
 
-\item{grid}{Optional grid size (integer) or dials grid.}
+\item{tune_ps}{If \code{TRUE}, performs tuning with
+\code{rsample::vfold_cv} and \code{tune::tune_grid}.}
+
+\item{resamples}{Optional \code{rsample} rset object; defaults to 5-fold
+cross-validation stratified on the outcome.}
+
+\item{grid}{Integer grid size or a \pkg{dials} grid object.}
 }
 \value{
-A list: workflow, fitted model, predictions (ps_hat).
+A list with elements \code{workflow}, \code{fit}, and
+  \code{ps_hat} (numeric vector of propensity scores).
 }
 \description{
-Fit PS with Tidymodels
+Fits a binary classification model for the probability of compliance
+(propensity score) using a \pkg{tidymodels} workflow.
 }

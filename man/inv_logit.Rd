@@ -7,8 +7,11 @@
 inv_logit(x)
 }
 \arguments{
-\item{x}{Numeric.}
+\item{x}{Numeric vector.}
+}
+\value{
+Numeric vector of probabilities.
 }
 \description{
-Inverse Logit
+Computes the inverse logit (logistic) transformation.
 }

@@ -7,8 +7,14 @@
 fit_msm_cox(tte_ivl_w)
 }
 \arguments{
-\item{tte_ivl_w}{Weighted TTE interval data.}
+\item{tte_ivl_w}{Weighted TTE interval data frame with columns
+\code{tstart}, \code{tstop}, \code{event}, \code{Treatment},
+\code{PatientID}, and \code{w}.}
+}
+\value{
+A \code{coxph} object.
 }
 \description{
-Fit Cox MSM (Start-Stop Intervals) with Robust SEs
+Fits a Cox proportional hazards marginal structural model using
+start-stop interval data and robust (cluster-robust) standard errors.
 }

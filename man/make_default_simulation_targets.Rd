@@ -5,12 +5,13 @@
 \title{Build the Default Simulation Pipeline}
 \usage{
 make_default_simulation_targets(
-  n_patients = 300L,
-  n_visits = 6L,
+  num_patients = 300L,
+  num_visits = 6L,
   tte_visits = 8L,
   seed_base = 10L,
   n_cohorts = 3L,
   ps_models = list(continuous = "glm", binary = "ranger", tte = "xgboost"),
+  non_linear_feature = TRUE,
   adh_shift = c(Treatment_1 = 0, Treatment_2 = -0.5, Treatment_3 = -0.9),
   out_effect = c(Treatment_1 = 0, Treatment_2 = 0.3, Treatment_3 = 0.7),
   logHR = c(Treatment_1 = 0, Treatment_2 = -0.2, Treatment_3 = -0.5),
@@ -18,9 +19,10 @@ make_default_simulation_targets(
 )
 }
 \arguments{
-\item{n_patients}{Integer number of patients to simulate.}
+\item{num_patients}{Integer number of patients to simulate.}
 
-\item{n_visits}{Integer number of visits for continuous and binary outcomes.}
+\item{num_visits}{Integer number of visits for continuous and binary
+outcomes.}
 
 \item{tte_visits}{Integer number of visits for time-to-event outcomes.}
 
@@ -28,22 +30,30 @@ make_default_simulation_targets(
 
 \item{n_cohorts}{Integer number of treatment cohorts.}
 
-\item{ps_models}{Named list with elements \code{continuous}, \code{binary},
-and \code{tte}; each must be one of \code{"glm"}, \code{"ranger"}, or
-\code{"xgboost"}.}
+\item{ps_models}{Named list with elements \code{continuous},
+\code{binary}, and \code{tte}; each must be one of \code{"glm"},
+\code{"ranger"}, or \code{"xgboost"}.}
 
-\item{adh_shift}{Numeric vector passed to \code{define_treatment_map()}.}
+\item{non_linear_feature}{Logical; whether to include the Age x
+SideEffect interaction in data generation.}
 
-\item{out_effect}{Numeric vector passed to \code{define_treatment_map()}.}
+\item{adh_shift}{Numeric vector passed to
+\code{define_treatment_map()}.}
 
-\item{logHR}{Numeric vector passed to \code{define_treatment_map()}.}
+\item{out_effect}{Numeric vector passed to
+\code{define_treatment_map()}.}
 
-\item{se_shift}{Numeric vector passed to \code{define_treatment_map()}.}
+\item{logHR}{Numeric vector passed to
+\code{define_treatment_map()}.}
+
+\item{se_shift}{Numeric vector passed to
+\code{define_treatment_map()}.}
 }
 \value{
-A list of \code{targets::tar_target()} objects for the default
-  longitudinal simulation workflow.
+A list of \code{targets::tar_target()} objects.
 }
 \description{
-Build the Default Simulation Pipeline
+Constructs a list of \code{targets::tar_target()} objects representing
+the full longitudinal PS simulation workflow: data generation, propensity
+score estimation, IPTW weighting, MSM fitting, and summarisation.
 }

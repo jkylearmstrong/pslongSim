@@ -1,27 +1,60 @@
-#' Build a PS Recipe
-#' @param df Data frame.
-#' @param outcome Name of binary outcome column ("Compliant").
-#' @param formula Predictors formula (default includes Treatment, time, demos, SE, Biomarker).
+#' Build a Propensity Score Recipe
+#'
+#' Constructs a \pkg{recipes} preprocessing pipeline for propensity score
+#' estimation.  The outcome column is converted to a factor (required for
+#' binary classification), dummy-encoded, zero-variance predictors are
+#' removed, and numeric predictors are normalised.
+#'
+#' @param df Data frame containing the outcome and predictor columns.
+#' @param outcome Character: name of the binary outcome column.
+#' @param predictors Character vector of predictor column names.  When
+#'   \code{NULL} (the default), a standard set is used
+#'   (\code{Treatment}, \code{VisitNumber}, \code{Age}, \code{GenderMale},
+#'   \code{SideEffect}, \code{Biomarker}).
+#' @return A \code{recipes::recipe} object.
 #' @export
 ps_recipe <- function(df,
                       outcome = "Compliant",
-                      formula = as.formula("Compliant ~ Treatment + VisitNumber + Age + GenderMale + SideEffect + Biomarker")) {
-  stopifnot(outcome %in% names(df))
-  # Classification models require the outcome to be a factor
+                      predictors = NULL) {
+  stopifnot(
+    "`outcome` must be a single character string." = is.character(outcome) && length(outcome) == 1L,
+    "`outcome` must be a column in `df`." = outcome %in% names(df)
+  )
+
+  if (is.null(predictors)) {
+    predictors <- c("Treatment", "VisitNumber", "Age", "GenderMale",
+                    "SideEffect", "Biomarker")
+  }
+  missing_preds <- setdiff(predictors, names(df))
+  if (length(missing_preds) > 0L) {
+    stop("ps_recipe: missing predictor column(s): ",
+         paste(missing_preds, collapse = ", "))
+  }
+
   if (!is.factor(df[[outcome]])) {
     df[[outcome]] <- as.factor(df[[outcome]])
   }
+
+  formula <- stats::as.formula(
+    paste(outcome, "~", paste(predictors, collapse = " + "))
+  )
+
   recipes::recipe(formula, data = df) |>
     recipes::step_dummy(recipes::all_nominal_predictors()) |>
     recipes::step_zv(recipes::all_predictors()) |>
     recipes::step_normalize(recipes::all_numeric_predictors())
 }
 
-#' Model spec factory for PS
-#' @param model One of "glm","xgboost","ranger".
-#' @param tune Logical; if TRUE, uses tune() placeholders for parameters.
+#' Model Specification Factory for Propensity Scores
+#'
+#' Returns a \pkg{parsnip} model specification for one of three PS engines.
+#'
+#' @param model One of \code{"glm"}, \code{"xgboost"}, or \code{"ranger"}.
+#' @param tune Logical; if \code{TRUE}, tuning placeholders are added for
+#'   \code{mtry} (relevant for \code{"xgboost"} and \code{"ranger"}).
+#' @return A \code{parsnip} model specification.
 #' @export
-ps_model_spec <- function(model = c("glm","xgboost","ranger"), tune = FALSE) {
+ps_model_spec <- function(model = c("glm", "xgboost", "ranger"), tune = FALSE) {
   model <- match.arg(model)
   if (model == "glm") {
     parsnip::logistic_reg() |>
@@ -41,28 +74,46 @@ ps_model_spec <- function(model = c("glm","xgboost","ranger"), tune = FALSE) {
   }
 }
 
-#' Fit PS with Tidymodels
-#' @param df Data frame containing outcome and predictors.
-#' @param model "glm","xgboost","ranger".
-#' @param tune_ps If TRUE, performs tuning with rsample vfold_cv and tune_grid.
-#' @param resamples Optional rsample object; default 5-fold vfold.
-#' @param grid Optional grid size (integer) or dials grid.
-#' @return A list: workflow, fitted model, predictions (ps_hat).
+#' Fit a Propensity Score Model via Tidymodels
+#'
+#' Fits a binary classification model for the probability of compliance
+#' (propensity score) using a \pkg{tidymodels} workflow.
+#'
+#' @param df Data frame containing the outcome and predictor columns.
+#' @param model One of \code{"glm"}, \code{"xgboost"}, or \code{"ranger"}.
+#' @param outcome Character: name of the binary outcome column.
+#' @param predictors Character vector of predictor column names (passed to
+#'   \code{ps_recipe()}).  Use \code{NULL} for the default set.
+#' @param tune_ps If \code{TRUE}, performs tuning with
+#'   \code{rsample::vfold_cv} and \code{tune::tune_grid}.
+#' @param resamples Optional \code{rsample} rset object; defaults to 5-fold
+#'   cross-validation stratified on the outcome.
+#' @param grid Integer grid size or a \pkg{dials} grid object.
+#' @return A list with elements \code{workflow}, \code{fit}, and
+#'   \code{ps_hat} (numeric vector of propensity scores).
 #' @export
 fit_ps_tidymodels <- function(df,
-                              model = c("glm","xgboost","ranger"),
-                              tune_ps = FALSE,
-                              resamples = NULL,
-                              grid = 20L) {
+                               model = c("glm", "xgboost", "ranger"),
+                               outcome = "Compliant",
+                               predictors = NULL,
+                               tune_ps = FALSE,
+                               resamples = NULL,
+                               grid = 20L) {
   model <- match.arg(model)
-  # Ensure outcome is a factor for classification
-  outcome <- "Compliant"
+
+  validate_columns(df, outcome, "fit_ps_tidymodels")
   if (!is.factor(df[[outcome]])) {
     df[[outcome]] <- as.factor(df[[outcome]])
   }
-  rec <- ps_recipe(df)
+  n_levels <- nlevels(df[[outcome]])
+  if (n_levels != 2L) {
+    stop("fit_ps_tidymodels: `outcome` must have exactly 2 levels, got ", n_levels, ".")
+  }
+  validate_min_rows(df, 10L, "fit_ps_tidymodels")
+
+  rec  <- ps_recipe(df, outcome = outcome, predictors = predictors)
   spec <- ps_model_spec(model, tune = tune_ps)
-  wf <- workflows::workflow() |>
+  wf   <- workflows::workflow() |>
     workflows::add_model(spec) |>
     workflows::add_recipe(rec)
 
@@ -70,22 +121,35 @@ fit_ps_tidymodels <- function(df,
     fit <- parsnip::fit(wf, data = df)
   } else {
     if (is.null(resamples)) {
-      resamples <- rsample::vfold_cv(df, v = 5, strata = "Compliant")
+      resamples <- rsample::vfold_cv(df, v = 5, strata = outcome)
     }
     tune_res <- tune::tune_grid(
       wf, resamples = resamples,
-      grid = if (is.numeric(grid)) dials::grid_regular(dials::mtry(), levels = grid) else grid,
+      grid = if (is.numeric(grid)) {
+        dials::grid_regular(dials::mtry(), levels = grid)
+      } else {
+        grid
+      },
       control = tune::control_grid(save_pred = TRUE, verbose = FALSE),
       metrics = yardstick::metric_set(yardstick::roc_auc)
     )
-    fit <- tune::select_best(tune_res, "roc_auc") |>
-      tune::finalize_workflow(wf, parameters = _)
-    fit <- parsnip::fit(fit, data = df)
+    best <- tune::select_best(tune_res, "roc_auc")
+    fit  <- tune::finalize_workflow(wf, parameters = best)
+    fit  <- parsnip::fit(fit, data = df)
   }
 
-  # Predict propensity score (P(Compliant=1))
-  # Ensure the data passed to predict also has the factor outcome
   preds <- predict(fit, new_data = df, type = "prob")
-  ps_hat <- as.numeric(preds$.pred_1)
+  # Dynamically extract the probability column for the second factor level
+  # (the "event" / "compliant" class).  tidymodels names columns as
+  # .pred_<level>; we find the column matching the second level name.
+  level2 <- levels(df[[outcome]])[2L]
+  pred_col <- paste0(".pred_", level2)
+  if (!pred_col %in% names(preds)) {
+    # Fallback: take the last .pred_* column
+    pred_cols <- grep("^\\.pred_", names(preds), value = TRUE)
+    pred_col  <- pred_cols[length(pred_cols)]
+  }
+  ps_hat <- as.numeric(preds[[pred_col]])
+
   list(workflow = wf, fit = fit, ps_hat = ps_hat)
 }

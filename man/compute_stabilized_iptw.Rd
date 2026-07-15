@@ -13,16 +13,23 @@ compute_stabilized_iptw(
 )
 }
 \arguments{
-\item{df}{Data frame with columns: Compliant, VisitNumber, ps_hat.}
+\item{df}{Data frame containing the compliance, propensity score, and
+visit number columns.}
 
-\item{c_var}{Name of compliance variable.}
+\item{c_var}{Character: name of the binary compliance column.}
 
-\item{ps_var}{Name of propensity score variable.}
+\item{ps_var}{Character: name of the propensity score column.}
 
-\item{visit_var}{Name of visit number variable.}
+\item{visit_var}{Character: name of the visit number column.}
 
-\item{truncate}{Trimming quantiles.}
+\item{truncate}{Numeric vector of length 2 giving the lower and upper
+quantiles for weight trimming.  Set to \code{NULL} to disable.}
+}
+\value{
+A data frame (the input with an additional \code{w} column).
 }
 \description{
-Compute Stabilized IPTW for Binary Compliance
+Calculates stabilised inverse probability of treatment weights using
+marginal and conditional (propensity-score) probabilities of compliance.
+Optionally truncates extreme weights at specified quantiles.
 }

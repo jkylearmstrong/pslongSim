@@ -2,22 +2,26 @@
 % Please edit documentation in R/ps_tidymodels.R
 \name{ps_recipe}
 \alias{ps_recipe}
-\title{Build a PS Recipe}
+\title{Build a Propensity Score Recipe}
 \usage{
-ps_recipe(
-  df,
-  outcome = "Compliant",
-  formula =
-    as.formula("Compliant ~ Treatment + VisitNumber + Age + GenderMale + SideEffect + Biomarker")
-)
+ps_recipe(df, outcome = "Compliant", predictors = NULL)
 }
 \arguments{
-\item{df}{Data frame.}
+\item{df}{Data frame containing the outcome and predictor columns.}
 
-\item{outcome}{Name of binary outcome column ("Compliant").}
+\item{outcome}{Character: name of the binary outcome column.}
 
-\item{formula}{Predictors formula (default includes Treatment, time, demos, SE, Biomarker).}
+\item{predictors}{Character vector of predictor column names.  When
+\code{NULL} (the default), a standard set is used
+(\code{Treatment}, \code{VisitNumber}, \code{Age}, \code{GenderMale},
+\code{SideEffect}, \code{Biomarker}).}
+}
+\value{
+A \code{recipes::recipe} object.
 }
 \description{
-Build a PS Recipe
+Constructs a \pkg{recipes} preprocessing pipeline for propensity score
+estimation.  The outcome column is converted to a factor (required for
+binary classification), dummy-encoded, zero-variance predictors are
+removed, and numeric predictors are normalised.
 }

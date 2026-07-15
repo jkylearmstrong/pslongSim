@@ -1,4 +1,3 @@
-# install.packages("targets")
 library(pslongSim)
 library(targets)
 

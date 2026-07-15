@@ -2,7 +2,8 @@
 % Please edit documentation in R/simulate.R
 \name{generate_longitudinal_data}
 \alias{generate_longitudinal_data}
-\title{Generate Longitudinal Data with Side-Effects, AR(1) Biomarker, and Multiple Outcome Types}
+\title{Generate Longitudinal Data with Side-Effects, AR(1) Biomarker,
+and Multiple Outcome Types}
 \usage{
 generate_longitudinal_data(
   patient_data,
@@ -20,6 +21,7 @@ generate_longitudinal_data(
   outcome_type = c("continuous", "binary", "tte"),
   outcome_model = list(intercept = 0, adherence = 0.9, se_effect = -0.5, biomarker_effect
     = 0.4, time_trend = 0.05, sd_subject = 0.7, sd_error = 1),
+  non_linear_feature = TRUE,
   tte_model = list(baseline_logit_h = -3.2, adherence_logHR = -0.5, se_logHR = 0.4,
     biomarker_logHR = -0.25, time_trend_logHR = 0, sd_frailty = 0.6),
   biom_model = list(intercept = 0, phi = 0.75, sd_innov = 0.5, sd_b0 = 0.75),
@@ -32,41 +34,71 @@ generate_longitudinal_data(
 )
 }
 \arguments{
-\item{patient_data}{Data frame from generate_patient_data_demographic().}
+\item{patient_data}{Data frame from \code{generate_patient_data_demographic()}.}
 
-\item{num_visits}{Integer.}
+\item{num_visits}{Integer number of study visits.}
 
-\item{seed}{Integer.}
+\item{seed}{Integer random seed (note: sets the global RNG state).}
 
-\item{trt_map}{Output of define_treatment_map().}
+\item{trt_map}{Output of \code{define_treatment_map()}.}
 
 \item{se_model}{List of side-effect model parameters.}
 
-\item{adherence_type}{"binary" or "beta".}
+\item{adherence_type}{\code{"binary"} or \code{"beta"}.}
 
-\item{adherence_model}{List of adherence parameters (includes se_effect and biomarker_effect).}
+\item{adherence_model}{List of adherence parameters.}
 
-\item{beta_concentration}{Numeric for beta adherence dispersion.}
+\item{beta_concentration}{Numeric concentration parameter for beta
+adherence.}
 
-\item{compliance_threshold}{Numeric (if adherence_type == "beta").}
+\item{compliance_threshold}{Numeric threshold for beta adherence
+compliance.}
 
-\item{sd_adherence_re}{SD for adherence random effect v_i.}
+\item{sd_adherence_re}{SD for the adherence random effect.}
 
-\item{outcome_type}{"continuous" | "binary" | "tte".}
+\item{outcome_type}{\code{"continuous"}, \code{"binary"}, or
+\code{"tte"}.}
 
-\item{outcome_model}{List of outcome parameters (includes se_effect and biomarker_effect).}
+\item{outcome_model}{List of outcome model parameters.}
 
-\item{tte_model}{List for TTE hazard model (includes biomarker_logHR).}
+\item{non_linear_feature}{Logical; if \code{TRUE}, adds an Age x
+SideEffect interaction to the outcome with no additive main effects.}
 
-\item{biom_model}{List for AR(1) biomarker parameters.}
+\item{tte_model}{List for the TTE hazard model.}
 
-\item{rho_uv, rho_uw, rho_vw}{Correlations among outcome/adherence/SE subject effects.}
+\item{biom_model}{List for the AR(1) biomarker parameters.}
 
-\item{start_date, visit_spacing_days, visit_jitter_days}{Visit scheduling.}
+\item{rho_uv}{Correlation between outcome and adherence subject effects.}
+
+\item{rho_uw}{Correlation between outcome and side-effect subject effects.}
+
+\item{rho_vw}{Correlation between adherence and side-effect subject effects.}
+
+\item{start_date}{Date of the first visit.}
+
+\item{visit_spacing_days}{Nominal number of days between visits.}
+
+\item{visit_jitter_days}{Maximum random jitter (in days) added to each
+visit date.}
 }
 \value{
-For continuous/binary outcomes: a long data.frame. For TTE: a list with long, tte_intervals, tte_subject.
+For continuous/binary outcomes: a \code{data.frame}. For TTE:
+  a list with elements \code{long}, \code{tte_intervals}, and
+  \code{tte_subject}.
 }
 \description{
-Generate Longitudinal Data with Side-Effects, AR(1) Biomarker, and Multiple Outcome Types
+Simulates a longitudinal clinical trial dataset with treatment-driven
+side effects, an AR(1) biomarker process, time-varying adherence,
+and one of three outcome types (continuous, binary, or time-to-event).
 }
+\section{Non-linear feature}{
+
+When \code{non_linear_feature = TRUE} (the default), a multiplicative
+interaction \code{Age * SideEffect} is added to the outcome with no
+additive main effects.  This creates a signal that is
+\strong{undetectable} by linear regression (which can only model additive
+effects of \code{Age} and \code{SideEffect}) but \strong{readily
+detectable} by tree-based models such as random forests or XGBoost,
+which naturally partition on feature interactions.
+}
+
