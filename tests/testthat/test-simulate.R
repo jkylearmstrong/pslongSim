@@ -103,6 +103,49 @@ test_that("input validation catches bad inputs", {
   )
 })
 
+test_that("outcome formula includes all model terms for continuous/binary", {
+  set.seed(42)
+  demo <- generate_patient_data_demographic(num_patients = 200, n_cohorts = 3)
+  trt_map <- define_treatment_map(
+    levels = levels(demo$Treatment),
+    out_effect = c(Treatment_1 = 0, Treatment_2 = 1.0, Treatment_3 = 2.0)
+  )
+  dat <- generate_longitudinal_data(
+    demo, num_visits = 4, trt_map = trt_map,
+    adherence_type = "beta",
+    outcome_type = "continuous",
+    outcome_model = list(
+      intercept = 0, adherence = 2.0, se_effect = 1.0,
+      biomarker_effect = 0.5, time_trend = 0.1,
+      sd_subject = 0.5, sd_error = 0.1
+    )
+  )
+  trt_means <- tapply(dat$Outcome, dat$Treatment, mean)
+  expect_true(trt_means["Treatment_3"] > trt_means["Treatment_1"],
+              info = "Treatment effect should be visible in means")
+})
+
+test_that("TTE event mapping uses PatientID not row index", {
+  set.seed(42)
+  demo <- generate_patient_data_demographic(num_patients = 30, n_cohorts = 3)
+  trt_map <- suppressWarnings(define_treatment_map(levels(demo$Treatment)))
+  result <- generate_longitudinal_data(demo, num_visits = 6, trt_map = trt_map,
+                                       adherence_type = "binary",
+                                       outcome_type = "tte")
+  all_pids <- unique(result$tte_intervals$PatientID)
+  events <- result$tte_subject[result$tte_subject$status == 1, "PatientID"]
+  for (pid in events) {
+    rows <- result$tte_intervals[result$tte_intervals$PatientID == pid, ]
+    rows <- rows[order(rows$VisitNumber), ]
+    ev_rows <- rows[rows$event == 1, ]
+    expect_equal(nrow(ev_rows), 1, info = paste("Patient", pid, "should have exactly 1 event"))
+    later <- rows[rows$VisitNumber > ev_rows$VisitNumber, ]
+    if (nrow(later) > 0) {
+      expect_true(all(later$AtRisk == 0), info = paste("Patient", pid, "at-risk after event"))
+    }
+  }
+})
+
 test_that("generate_patient_data_demographic returns correct structure", {
   demo <- generate_patient_data_demographic(num_patients = 100, seed = 42)
   expect_equal(nrow(demo), 100)

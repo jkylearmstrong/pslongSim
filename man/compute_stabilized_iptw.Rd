@@ -9,6 +9,7 @@ compute_stabilized_iptw(
   c_var = "Compliant",
   ps_var = "ps_hat",
   visit_var = "VisitNumber",
+  id_var = "PatientID",
   truncate = c(0.01, 0.99)
 )
 }
@@ -21,6 +22,9 @@ visit number columns.}
 \item{ps_var}{Character: name of the propensity score column.}
 
 \item{visit_var}{Character: name of the visit number column.}
+
+\item{id_var}{Character: name of the patient identifier column used for
+cumulative weight calculation across visits.}
 
 \item{truncate}{Numeric vector of length 2 giving the lower and upper
 quantiles for weight trimming.  Set to \code{NULL} to disable.}

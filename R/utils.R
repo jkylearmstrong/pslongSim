@@ -82,11 +82,12 @@ if (getRversion() >= "2.15.1") {
     "msm_cont", "msm_bin", "msm_cox",
     "summary_cont", "summary_bin", "summary_cox",
     "Compliant", "Treatment", "VisitNumber",
-    "Age", "GenderMale", "SideEffect", "Biomarker"
+    "Age", "GenderMale", "SideEffect", "Biomarker",
+    ".cluster_id"
   ))
 }
 
-#' @importFrom stats aggregate as.formula binomial gaussian predict quantile rbinom rnorm
+#' @importFrom stats aggregate as.formula binomial gaussian predict quantile rbinom rnorm ave
 #' @importFrom utils head
 #' @importFrom recipes recipe step_dummy step_zv step_normalize all_nominal_predictors all_numeric_predictors all_predictors
 #' @importFrom parsnip logistic_reg boost_tree rand_forest set_engine set_mode set_args fit

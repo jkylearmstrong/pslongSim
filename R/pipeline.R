@@ -26,12 +26,10 @@
 #' @param se_shift Numeric vector passed to
 #'   \code{define_treatment_map()}.
 #' @return A list of \code{targets::tar_target()} objects.
-#' @examples
-#' \donttest{
+#' @examplesIf requireNamespace("targets", quietly = TRUE)
 #' # Requires the 'targets' package
 #' targets <- make_default_simulation_targets(num_patients = 10)
 #' length(targets)
-#' }
 #' @export
 make_default_simulation_targets <- function(
     num_patients = 300L,

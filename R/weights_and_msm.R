@@ -9,6 +9,8 @@
 #' @param c_var Character: name of the binary compliance column.
 #' @param ps_var Character: name of the propensity score column.
 #' @param visit_var Character: name of the visit number column.
+#' @param id_var Character: name of the patient identifier column used for
+#'   cumulative weight calculation across visits.
 #' @param truncate Numeric vector of length 2 giving the lower and upper
 #'   quantiles for weight trimming.  Set to \code{NULL} to disable.
 #' @return A data frame (the input with an additional \code{w} column).
@@ -26,19 +28,27 @@ compute_stabilized_iptw <- function(df,
                                     c_var = "Compliant",
                                     ps_var = "ps_hat",
                                     visit_var = "VisitNumber",
+                                    id_var = "PatientID",
                                     truncate = c(0.01, 0.99)) {
-  validate_columns(df, c(c_var, ps_var, visit_var), "compute_stabilized_iptw")
+  validate_columns(df, c(c_var, ps_var, visit_var, id_var), "compute_stabilized_iptw")
   validate_min_rows(df, 1L, "compute_stabilized_iptw")
-
-  marg <- stats::aggregate(df[[c_var]] ~ df[[visit_var]], data = df, FUN = mean)
-  names(marg) <- c(visit_var, "p_marg")
-  df <- merge(df, marg, by = visit_var, all.x = TRUE, sort = FALSE)
 
   eps <- 1e-6
   C  <- df[[c_var]]
+  
+  if (is.factor(C)) {
+    C <- as.numeric(as.character(C))
+  } else {
+    C <- as.numeric(C)
+  }
+  
   e  <- clamp(df[[ps_var]], eps, 1 - eps)
-  pM <- clamp(df[["p_marg"]], eps, 1 - eps)
-  w  <- (pM^C) * ((1 - pM)^(1 - C)) / (e^C) / ((1 - e)^(1 - C))
+  pM <- clamp(ave(C, df[[visit_var]], FUN = mean), eps, 1 - eps)
+  w_step  <- (pM^C) * ((1 - pM)^(1 - C)) / (e^C) / ((1 - e)^(1 - C))
+
+  ord <- order(df[[id_var]], df[[visit_var]])
+  w <- numeric(nrow(df))
+  w[ord] <- ave(w_step[ord], df[[id_var]][ord], FUN = cumprod)
 
   if (!is.null(truncate)) {
     q <- stats::quantile(w, probs = clamp(truncate, 0, 1), na.rm = TRUE)
@@ -125,10 +135,11 @@ fit_msm_gee_bin <- function(df_w) {
   validate_columns(df_w, c("Outcome", "Treatment", "VisitNumber",
                            "PatientID", "w"), fn_name)
   validate_min_rows(df_w, 10L, fn_name)
+  df_w$.cluster_id <- as.numeric(factor(df_w$PatientID))
   tryCatch({
     geepack::geeglm(
       Outcome ~ Treatment + VisitNumber,
-      id      = PatientID,
+      id      = .cluster_id,
       weights = w,
       family  = family,
       corstr  = "independence",
@@ -136,7 +147,7 @@ fit_msm_gee_bin <- function(df_w) {
       std.err = "san.se"
     )
   }, error = function(e) {
-    stop(fn_name, ": GEE model failed to converge: ", e$message,
+    stop(fn_name, ": GEE model execution failed: ", e$message,
          call. = FALSE)
   })
 }
@@ -180,7 +191,7 @@ fit_msm_cox <- function(tte_ivl_w) {
       cluster = PatientID
     )
   }, error = function(e) {
-    stop("fit_msm_cox: Cox model failed to fit: ", e$message,
+    stop("fit_msm_cox: Cox model execution failed: ", e$message,
          call. = FALSE)
   })
   result

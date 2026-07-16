@@ -1,0 +1,1244 @@
+## R Code
+# ---- C:/Users/jkyle/Documents/GitHub/pslongsim/R/pipeline.R ----
+#' Build the Default Simulation Pipeline
+#'
+#' Constructs a list of \code{targets::tar_target()} objects representing
+#' the full longitudinal PS simulation workflow: data generation, propensity
+#' score estimation, IPTW weighting, MSM fitting, and summarisation.
+#'
+#' @param num_patients Integer number of patients to simulate.
+#' @param num_visits Integer number of visits for continuous and binary
+#'   outcomes.
+#' @param tte_visits Integer number of visits for time-to-event outcomes.
+#' @param seed_base Integer base seed used to derive per-target seeds.
+#' @param n_cohorts Integer number of treatment cohorts.
+#' @param ps_models Named list with elements \code{continuous},
+#'   \code{binary}, and \code{tte}; each must be one of \code{"glm"},
+#'   \code{"ranger"}, or \code{"xgboost"}.
+#' @param non_linear_feature Logical; whether to include interaction terms
+#'   in data generation (see \code{nonlin_coefs}).
+#' @param nonlin_coefs Named numeric vector of interaction coefficients
+#'   passed to \code{generate_longitudinal_data()}.
+#' @param adh_shift Numeric vector passed to
+#'   \code{define_treatment_map()}.
+#' @param out_effect Numeric vector passed to
+#'   \code{define_treatment_map()}.
+#' @param logHR Numeric vector passed to
+#'   \code{define_treatment_map()}.
+#' @param se_shift Numeric vector passed to
+#'   \code{define_treatment_map()}.
+#' @return A list of \code{targets::tar_target()} objects.
+#' @examples
+#' \donttest{
+#' # Requires the 'targets' package
+#' targets <- make_default_simulation_targets(num_patients = 10)
+#' length(targets)
+#' }
+#' @export
+make_default_simulation_targets <- function(
+    num_patients = 300L,
+    num_visits = 6L,
+    tte_visits = 8L,
+    seed_base = 10L,
+    n_cohorts = 3L,
+    ps_models = list(
+      continuous = "glm",
+      binary     = "ranger",
+      tte        = "xgboost"
+    ),
+    non_linear_feature = FALSE,
+    nonlin_coefs = c("Age:SideEffect" = 0.15),
+    adh_shift  = c(Treatment_1 = 0, Treatment_2 = -0.5, Treatment_3 = -0.9),
+    out_effect = c(Treatment_1 = 0, Treatment_2 = 0.3, Treatment_3 = 0.7),
+    logHR      = c(Treatment_1 = 0, Treatment_2 = -0.2, Treatment_3 = -0.5),
+    se_shift   = c(Treatment_1 = 0, Treatment_2 = 0.2, Treatment_3 = 0.4)
+) {
+  stopifnot(
+    "`num_patients` must be positive." = num_patients > 0L,
+    "`num_visits` must be positive."   = num_visits > 0L,
+    "`tte_visits` must be positive."   = tte_visits > 0L,
+    "`n_cohorts` must be positive."    = n_cohorts > 0L
+  )
+
+  required_models <- c("continuous", "binary", "tte")
+  valid_models    <- c("glm", "xgboost", "ranger")
+  stopifnot(
+    is.list(ps_models),
+    all(required_models %in% names(ps_models)),
+    all(unlist(ps_models[required_models], use.names = FALSE) %in% valid_models)
+  )
+
+  list(
+    # -- Demographics ----------------------------------------------------------
+    targets::tar_target(
+      demo,
+      generate_patient_data_demographic(
+        num_patients = num_patients,
+        n_cohorts    = n_cohorts,
+        seed         = seed_base
+      )
+    ),
+    targets::tar_target(
+      trt_map,
+      {
+        levels <- levels(demo$Treatment)
+        define_treatment_map(
+          levels     = levels,
+          adh_shift  = adh_shift,
+          out_effect = out_effect,
+          logHR      = logHR,
+          se_shift   = se_shift
+        )
+      }
+    ),
+    # -- Data generation (3 outcome types) ------------------------------------
+    targets::tar_target(
+      dat_cont,
+      generate_longitudinal_data(
+        patient_data       = demo,
+        num_visits         = num_visits,
+        seed               = seed_base + 1L,
+        trt_map            = trt_map,
+        adherence_type     = "beta",
+        outcome_type       = "continuous",
+        non_linear_feature = non_linear_feature,
+        nonlin_coefs       = nonlin_coefs
+      )
+    ),
+    targets::tar_target(
+      dat_bin,
+      generate_longitudinal_data(
+        patient_data       = demo,
+        num_visits         = num_visits,
+        seed               = seed_base + 2L,
+        trt_map            = trt_map,
+        adherence_type     = "binary",
+        outcome_type       = "binary",
+        non_linear_feature = non_linear_feature,
+        nonlin_coefs       = nonlin_coefs
+      )
+    ),
+    targets::tar_target(
+      dat_tte,
+      generate_longitudinal_data(
+        patient_data       = demo,
+        num_visits         = tte_visits,
+        seed               = seed_base + 3L,
+        trt_map            = trt_map,
+        adherence_type     = "binary",
+        outcome_type       = "tte",
+        non_linear_feature = non_linear_feature,
+        nonlin_coefs       = nonlin_coefs
+      )
+    ),
+    # -- Propensity score models ----------------------------------------------
+    targets::tar_target(
+      ps_cont,
+      fit_ps_tidymodels(dat_cont, model = ps_models$continuous)
+    ),
+    targets::tar_target(
+      ps_bin,
+      fit_ps_tidymodels(dat_bin, model = ps_models$binary,
+                        tune_ps = FALSE)
+    ),
+    targets::tar_target(
+      ps_tte,
+      fit_ps_tidymodels(
+        filter_at_risk(dat_tte$tte_intervals),
+        model    = ps_models$tte,
+        tune_ps  = FALSE
+      )
+    ),
+    # -- IPTW weights ---------------------------------------------------------
+    targets::tar_target(
+      dat_cont_w,
+      {
+        df <- dat_cont
+        df$ps_hat <- ps_cont$ps_hat
+        compute_stabilized_iptw(df)
+      }
+    ),
+    targets::tar_target(
+      dat_bin_w,
+      {
+        df <- dat_bin
+        df$ps_hat <- ps_bin$ps_hat
+        compute_stabilized_iptw(df)
+      }
+    ),
+    targets::tar_target(
+      tte_ivl_w,
+      {
+        ivl <- filter_at_risk(dat_tte$tte_intervals)
+        ivl$ps_hat <- ps_tte$ps_hat
+        compute_stabilized_iptw(ivl)
+      }
+    ),
+    # -- Marginal structural models -------------------------------------------
+    targets::tar_target(msm_cont, fit_msm_gee_cont(dat_cont_w)),
+    targets::tar_target(msm_bin,  fit_msm_gee_bin(dat_bin_w)),
+    targets::tar_target(msm_cox,  fit_msm_cox(tte_ivl_w)),
+    # -- Summaries ------------------------------------------------------------
+    targets::tar_target(summary_cont, summary(msm_cont)),
+    targets::tar_target(summary_bin,  summary(msm_bin)),
+    targets::tar_target(summary_cox,  summary(msm_cox))
+  )
+}
+
+# ---- C:/Users/jkyle/Documents/GitHub/pslongsim/R/ps_tidymodels.R ----
+#' Build a Propensity Score Recipe
+#'
+#' Constructs a \pkg{recipes} preprocessing pipeline for propensity score
+#' estimation.  The outcome column is converted to a factor (required for
+#' binary classification), dummy-encoded, zero-variance predictors are
+#' removed, and numeric predictors are normalised.
+#'
+#' @param df Data frame containing the outcome and predictor columns.
+#' @param outcome Character: name of the binary outcome column.
+#' @param predictors Character vector of predictor column names.  When
+#'   \code{NULL} (the default), a standard set is used
+#'   (\code{Treatment}, \code{VisitNumber}, \code{Age}, \code{GenderMale},
+#'   \code{SideEffect}, \code{Biomarker}).
+#' @return A \code{recipes::recipe} object.
+#' @examples
+#' demo <- generate_patient_data_demographic(num_patients = 50, seed = 1)
+#' trt_map <- suppressWarnings(define_treatment_map(levels(demo$Treatment)))
+#' dat <- generate_longitudinal_data(demo, num_visits = 4, trt_map = trt_map)
+#' rec <- ps_recipe(dat)
+#' rec
+#' @export
+ps_recipe <- function(df,
+                      outcome = "Compliant",
+                      predictors = NULL) {
+  stopifnot(
+    "`outcome` must be a single character string." = is.character(outcome) && length(outcome) == 1L,
+    "`outcome` must be a column in `df`." = outcome %in% names(df)
+  )
+
+  if (is.null(predictors)) {
+    predictors <- c("Treatment", "VisitNumber", "Age", "GenderMale",
+                    "SideEffect", "Biomarker")
+  }
+  missing_preds <- setdiff(predictors, names(df))
+  if (length(missing_preds) > 0L) {
+    stop("ps_recipe: missing predictor column(s): ",
+         paste(missing_preds, collapse = ", "))
+  }
+
+  if (!is.factor(df[[outcome]])) {
+    df[[outcome]] <- as.factor(df[[outcome]])
+  }
+
+  formula <- stats::as.formula(
+    paste(outcome, "~", paste(predictors, collapse = " + "))
+  )
+
+  recipes::recipe(formula, data = df) |>
+    recipes::step_dummy(recipes::all_nominal_predictors()) |>
+    recipes::step_zv(recipes::all_predictors()) |>
+    recipes::step_normalize(recipes::all_numeric_predictors())
+}
+
+#' Model Specification Factory for Propensity Scores
+#'
+#' Returns a \pkg{parsnip} model specification for one of three PS engines.
+#'
+#' @param model One of \code{"glm"}, \code{"xgboost"}, or \code{"ranger"}.
+#' @param tune Logical; if \code{TRUE}, tuning placeholders are added for
+#'   \code{mtry} (relevant for \code{"xgboost"} and \code{"ranger"}).
+#' @return A \code{parsnip} model specification.
+#' @examples
+#' # GLM specification (no extra dependencies)
+#' spec <- ps_model_spec("glm")
+#'
+#' # Ranger specification (requires ranger package)
+#' if (requireNamespace("ranger", quietly = TRUE)) {
+#'   spec_rf <- ps_model_spec("ranger")
+#' }
+#' @export
+ps_model_spec <- function(model = c("glm", "xgboost", "ranger"), tune = FALSE) {
+  model <- match.arg(model)
+  if (model == "xgboost") {
+    require_suggested("xgboost")
+    spec <- parsnip::boost_tree(trees = 500, learn_rate = 0.05, tree_depth = 4)
+    if (tune) spec <- parsnip::set_args(spec, mtry = tune::tune())
+    spec |>
+      parsnip::set_mode("classification") |>
+      parsnip::set_engine("xgboost")
+  } else if (model == "ranger") {
+    require_suggested("ranger")
+    spec <- parsnip::rand_forest(trees = 1000, min_n = 10)
+    if (tune) spec <- parsnip::set_args(spec, mtry = tune::tune())
+    spec |>
+      parsnip::set_mode("classification") |>
+      parsnip::set_engine("ranger", probability = TRUE)
+  } else {
+    parsnip::logistic_reg() |>
+      parsnip::set_engine("glm")
+  }
+}
+
+#' Fit a Propensity Score Model via Tidymodels
+#'
+#' Fits a binary classification model for the probability of compliance
+#' (propensity score) using a \pkg{tidymodels} workflow.
+#'
+#' @param df Data frame containing the outcome and predictor columns.
+#' @param model One of \code{"glm"}, \code{"xgboost"}, or \code{"ranger"}.
+#' @param outcome Character: name of the binary outcome column.
+#' @param predictors Character vector of predictor column names (passed to
+#'   \code{ps_recipe()}).  Use \code{NULL} for the default set.
+#' @param tune_ps If \code{TRUE}, performs tuning with
+#'   \code{rsample::vfold_cv} and \code{tune::tune_grid}.
+#' @param resamples Optional \code{rsample} rset object; defaults to 5-fold
+#'   cross-validation stratified on the outcome.
+#' @param grid Integer grid size or a \pkg{dials} grid object.
+#' @return A list with elements \code{workflow}, \code{fit}, and
+#'   \code{ps_hat} (numeric vector of propensity scores).
+#' @seealso \code{\link{ps_recipe}}, \code{\link{ps_model_spec}},
+#'   \code{\link{compute_stabilized_iptw}}
+#' @examples
+#' demo <- generate_patient_data_demographic(num_patients = 80, seed = 1)
+#' trt_map <- suppressWarnings(define_treatment_map(levels(demo$Treatment)))
+#' dat <- generate_longitudinal_data(demo, num_visits = 4, trt_map = trt_map)
+#' ps <- fit_ps_tidymodels(dat, model = "glm")
+#' range(ps$ps_hat)
+#' @export
+fit_ps_tidymodels <- function(df,
+                               model = c("glm", "xgboost", "ranger"),
+                               outcome = "Compliant",
+                               predictors = NULL,
+                               tune_ps = FALSE,
+                               resamples = NULL,
+                               grid = 20L) {
+  model <- match.arg(model)
+
+  validate_columns(df, outcome, "fit_ps_tidymodels")
+  if (!is.factor(df[[outcome]])) {
+    df[[outcome]] <- as.factor(df[[outcome]])
+  }
+  n_levels <- nlevels(df[[outcome]])
+  if (n_levels != 2L) {
+    stop("fit_ps_tidymodels: `outcome` must have exactly 2 levels, got ", n_levels, ".")
+  }
+  validate_min_rows(df, 10L, "fit_ps_tidymodels")
+
+  rec  <- ps_recipe(df, outcome = outcome, predictors = predictors)
+  spec <- ps_model_spec(model, tune = tune_ps)
+  wf   <- workflows::workflow() |>
+    workflows::add_model(spec) |>
+    workflows::add_recipe(rec)
+
+  if (identical(model, "glm") || !tune_ps) {
+    fit <- parsnip::fit(wf, data = df)
+  } else {
+    if (is.null(resamples)) {
+      resamples <- rsample::vfold_cv(df, v = 5, strata = outcome)
+    }
+    tune_res <- tune::tune_grid(
+      wf, resamples = resamples,
+      grid = if (is.numeric(grid)) {
+        dials::grid_regular(dials::mtry(), levels = grid)
+      } else {
+        grid
+      },
+      control = tune::control_grid(save_pred = TRUE, verbose = FALSE),
+      metrics = yardstick::metric_set(yardstick::roc_auc)
+    )
+    best <- tune::select_best(tune_res, "roc_auc")
+    fit  <- tune::finalize_workflow(wf, parameters = best)
+    fit  <- parsnip::fit(fit, data = df)
+  }
+
+  preds <- predict(fit, new_data = df, type = "prob")
+  # Dynamically extract the probability column for the second factor level
+  # (the "event" / "compliant" class).  tidymodels names columns as
+  # .pred_<level>; we find the column matching the second level name.
+  level2 <- levels(df[[outcome]])[2L]
+  pred_col <- paste0(".pred_", level2)
+  if (!pred_col %in% names(preds)) {
+    # Fallback: take the last .pred_* column
+    pred_cols <- grep("^\\.pred_", names(preds), value = TRUE)
+    pred_col  <- pred_cols[length(pred_cols)]
+  }
+  ps_hat <- as.numeric(preds[[pred_col]])
+
+  list(workflow = wf, fit = fit, ps_hat = ps_hat)
+}
+
+# ---- C:/Users/jkyle/Documents/GitHub/pslongsim/R/simulate.R ----
+#' Generate Demographics
+#'
+#' Creates a baseline patient data frame with IDs, ages, genders, and
+#' randomised treatment assignments.
+#'
+#' @param num_patients Total number of patients.
+#' @param seed Random seed (note: sets the global RNG state).
+#' @param n_cohorts Number of treatment cohorts.
+#' @param age_range Integer vector of length 2 giving the age range.
+#' @param gender_levels Character vector of gender levels.
+#' @param treatment_prefix Character prefix for treatment level names.
+#' @return A data.frame with columns \code{PatientID}, \code{Age},
+#'   \code{Gender}, and \code{Treatment}.
+#' @examples
+#' demo <- generate_patient_data_demographic(num_patients = 100, seed = 1)
+#' head(demo)
+#' @export
+generate_patient_data_demographic <- function(
+    num_patients = 1000,
+    seed = 123,
+    n_cohorts = 3,
+    age_range = c(18, 90),
+    gender_levels = c("Male", "Female"),
+    treatment_prefix = "Treatment_"
+) {
+  stopifnot(
+    "`num_patients` must be a positive integer." = is.numeric(num_patients) && num_patients >= 1L,
+    "`age_range` must be length 2 with age_range[1] < age_range[2]." =
+      length(age_range) == 2L && age_range[1] < age_range[2]
+  )
+  set.seed(seed)
+
+  patient_ids <- paste0("P", sprintf("%04d", seq_len(num_patients)))
+  ages <- sample(seq.int(age_range[1], age_range[2]), num_patients, replace = TRUE)
+  genders <- sample(gender_levels, num_patients, replace = TRUE)
+  treatments <- sample(paste0(treatment_prefix, seq_len(n_cohorts)),
+                       num_patients, replace = TRUE)
+
+  data.frame(
+    PatientID = patient_ids,
+    Age       = ages,
+    Gender    = factor(genders, levels = gender_levels),
+    Treatment = factor(treatments,
+                       levels = paste0(treatment_prefix, seq_len(n_cohorts)))
+  )
+}
+
+#' Generate Longitudinal Data with Side-Effects, AR(1) Biomarker,
+#' and Multiple Outcome Types
+#'
+#' Simulates a longitudinal clinical trial dataset with treatment-driven
+#' side effects, an AR(1) biomarker process, time-varying adherence,
+#' and one of three outcome types (continuous, binary, or time-to-event).
+#'
+#' @section Non-linear feature:
+#' When \code{non_linear_feature = TRUE}, one or more multiplicative
+#' interactions are added to the outcome with no additive main effects.
+#' The default interaction is \code{Age * SideEffect}.  These signals are
+#' \strong{undetectable} by linear regression (which can only model additive
+#' effects) but \strong{readily detectable} by tree-based models such as
+#' random forests or XGBoost, which naturally partition on feature
+#' interactions.  Use \code{nonlin_coefs} to control which interactions are
+#' included and their coefficients.
+#'
+#' @param patient_data Data frame from \code{generate_patient_data_demographic()}.
+#' @param num_visits Integer number of study visits.
+#' @param seed Integer random seed (note: sets the global RNG state).
+#' @param trt_map Output of \code{define_treatment_map()}.
+#' @param se_model List of side-effect model parameters.
+#' @param adherence_type \code{"binary"} or \code{"beta"}.
+#' @param adherence_model List of adherence parameters.
+#' @param beta_concentration Numeric concentration parameter for beta
+#'   adherence.
+#' @param compliance_threshold Numeric threshold for beta adherence
+#'   compliance.
+#' @param sd_adherence_re SD for the adherence random effect.
+#' @param outcome_type \code{"continuous"}, \code{"binary"}, or
+#'   \code{"tte"}.
+#' @param outcome_model List of outcome model parameters.
+#' @param non_linear_feature Logical; if \code{TRUE}, adds interaction terms
+#'   to the outcome as specified by \code{nonlin_coefs}.  Default
+#'   \code{FALSE} for backward compatibility.
+#' @param nonlin_coefs Named numeric vector of interaction coefficients.
+#'   Names must be in the form \code{"VarA:VarB"} (e.g.,
+#'   \code{c("Age:SideEffect" = 0.15)}).  Only used when
+#'   \code{non_linear_feature = TRUE}.
+#' @param tte_model List for the TTE hazard model.
+#' @param biom_model List for the AR(1) biomarker parameters.
+#' @param rho_uv Correlation between outcome and adherence subject effects.
+#' @param rho_uw Correlation between outcome and side-effect subject effects.
+#' @param rho_vw Correlation between adherence and side-effect subject effects.
+#' @param start_date Date of the first visit.
+#' @param visit_spacing_days Nominal number of days between visits.
+#' @param visit_jitter_days Maximum random jitter (in days) added to each
+#'   visit date.
+#' @return For continuous/binary outcomes: a \code{data.frame}. For TTE:
+#'   a list with elements \code{long}, \code{tte_intervals}, and
+#'   \code{tte_subject}.
+#' @seealso \code{\link{generate_patient_data_demographic}},
+#'   \code{\link{define_treatment_map}}, \code{\link{filter_at_risk}}
+#' @examples
+#' demo <- generate_patient_data_demographic(num_patients = 50, seed = 1)
+#' trt_map <- suppressWarnings(define_treatment_map(levels(demo$Treatment)))
+#' dat <- generate_longitudinal_data(demo, num_visits = 4, trt_map = trt_map)
+#' head(dat)
+#' @export
+generate_longitudinal_data <- function(
+    patient_data,
+    num_visits = 6,
+    seed = 2026,
+    trt_map,
+    # Side-effects model
+    se_model = list(
+      intercept  = -1.2,
+      age        =  0.00,
+      male       =  0.05,
+      time_trend =  0.05,
+      lag_se     =  1.00,
+      sd_subject =  0.6
+    ),
+    # Adherence model
+    adherence_type = c("binary", "beta"),
+    adherence_model = list(
+      intercept        = -0.3,
+      age              = -0.005,
+      male             = -0.10,
+      time_trend       =  0.04,
+      lag_comp         =  0.80,
+      se_effect        = -0.7,
+      biomarker_effect =  0.25
+    ),
+    beta_concentration = 25,
+    compliance_threshold = 0.80,
+    sd_adherence_re = 1.0,
+    # Outcome
+    outcome_type = c("continuous", "binary", "tte"),
+    outcome_model = list(
+      intercept        = 0.0,
+      adherence        = 0.9,
+      se_effect        = -0.5,
+      biomarker_effect = 0.40,
+      time_trend       = 0.05,
+      sd_subject       = 0.7,
+      sd_error         = 1.0
+    ),
+    # Non-linear feature toggle
+    non_linear_feature = FALSE,
+    nonlin_coefs = c("Age:SideEffect" = 0.15),
+    # TTE hazard (discrete-time)
+    tte_model = list(
+      baseline_logit_h = -3.2,
+      adherence_logHR  = -0.5,
+      se_logHR         =  0.4,
+      biomarker_logHR  = -0.25,
+      time_trend_logHR =  0.00,
+      sd_frailty       =  0.6
+    ),
+    # AR(1) biomarker
+    biom_model = list(
+      intercept = 0.0,
+      phi       = 0.75,
+      sd_innov  = 0.5,
+      sd_b0     = 0.75
+    ),
+    # RE correlations
+    rho_uv = 0.4,
+    rho_uw = 0.2,
+    rho_vw = 0.2,
+    # Visit timing
+    start_date = as.Date("2024-01-01"),
+    visit_spacing_days = 28,
+    visit_jitter_days  = 5
+) {
+  # -- Input validation -------------------------------------------------------
+  if (!is.data.frame(patient_data)) {
+    stop("generate_longitudinal_data: `patient_data` must be a data.frame.")
+  }
+  required_demo <- c("PatientID", "Age", "Gender", "Treatment")
+  validate_columns(patient_data, required_demo, "generate_longitudinal_data")
+  if (!is.factor(patient_data$Treatment)) {
+    stop("generate_longitudinal_data: `patient_data$Treatment` must be a factor.")
+  }
+  stopifnot(
+    "`num_visits` must be a positive integer." =
+      is.numeric(num_visits) && num_visits >= 1L,
+    "`trt_map` must be a data.frame." = is.data.frame(trt_map)
+  )
+
+  adherence_type <- match.arg(adherence_type)
+  outcome_type   <- match.arg(outcome_type)
+
+  trt_levels <- levels(patient_data$Treatment)
+  req_trt_cols <- c("adh_shift", "out_effect", "logHR", "se_shift")
+  if (!all(trt_levels %in% rownames(trt_map))) {
+    stop("generate_longitudinal_data: trt_map is missing rows for treatment levels: ",
+         paste(setdiff(trt_levels, rownames(trt_map)), collapse = ", "))
+  }
+  if (!all(req_trt_cols %in% colnames(trt_map))) {
+    stop("generate_longitudinal_data: trt_map is missing columns: ",
+         paste(setdiff(req_trt_cols, colnames(trt_map)), collapse = ", "))
+  }
+
+  set.seed(seed)
+
+  n     <- nrow(patient_data)
+  T_vis <- num_visits
+
+  # Long index
+  long_index <- expand.grid(PatientRow = seq_len(n),
+                            VisitNumber = seq_len(T_vis))
+  long_index <- long_index[order(long_index$PatientRow,
+                                  long_index$VisitNumber), ]
+
+  id    <- patient_data$PatientID[long_index$PatientRow]
+  trt   <- patient_data$Treatment[long_index$PatientRow]
+  age   <- patient_data$Age[long_index$PatientRow]
+  male  <- as.integer(patient_data$Gender[long_index$PatientRow] == "Male")
+  visit <- long_index$VisitNumber
+
+  nominal_days <- (visit - 1L) * visit_spacing_days
+  jitter <- sample.int(2 * visit_jitter_days + 1L,
+                       length(nominal_days), replace = TRUE) -
+    (visit_jitter_days + 1L)
+  visit_date <- start_date + nominal_days + jitter
+
+  # Subject-level RE (u, v, w) with correlation
+  # u_i is the outcome frailty; for TTE use sd_frailty, otherwise sd_subject
+  sd_u <- if (identical(outcome_type, "tte")) {
+    tte_model$sd_frailty
+  } else {
+    outcome_model$sd_subject
+  }
+  sd_v <- sd_adherence_re
+  sd_w <- se_model$sd_subject
+
+  R <- matrix(c(1,      rho_uv, rho_uw,
+                rho_uv, 1,      rho_vw,
+                rho_uw, rho_vw, 1), 3, 3, byrow = TRUE)
+  S <- diag(c(sd_u, sd_v, sd_w))
+  Sigma <- S %*% R %*% S
+  require_suggested("MASS")
+  uvw <- MASS::mvrnorm(n = n, mu = c(0, 0, 0), Sigma = Sigma)
+  u_i <- uvw[, 1][long_index$PatientRow]
+  v_i <- uvw[, 2][long_index$PatientRow]
+  w_i <- uvw[, 3][long_index$PatientRow]
+
+  # Subject-specific biomarker baseline
+  b0_subj <- rnorm(n, mean = biom_model$intercept, sd = biom_model$sd_b0)
+  b0 <- b0_subj[long_index$PatientRow]
+
+  # Treatment shifts
+  trt_names      <- as.character(trt)
+  trt_adh_shift  <- trt_map[trt_names, "adh_shift"]
+  trt_out_effect <- trt_map[trt_names, "out_effect"]
+  trt_se_shift   <- trt_map[trt_names, "se_shift"]
+  trt_logHR      <- trt_map[trt_names, "logHR"]
+
+  # Precompute base LPs
+  lp_se_base <- se_model$intercept +
+    trt_se_shift + se_model$age * age + se_model$male * male +
+    se_model$time_trend * (visit - 1) + w_i
+
+  lp_adh_base <- adherence_model$intercept +
+    trt_adh_shift + adherence_model$age * age +
+    adherence_model$male * male +
+    adherence_model$time_trend * (visit - 1) + v_i
+
+  # Containers
+  n_long <- length(visit)
+  SE    <- integer(n_long)
+  Adh   <- numeric(n_long)
+  Comp  <- integer(n_long)
+  Biom  <- numeric(n_long)
+  Event <- integer(n_long)
+
+  # Helper index
+  idx_fun <- function(j, t) (j - 1L) * T_vis + t
+
+  # Generate AR(1) biomarker and lagged processes
+  for (j in seq_len(n)) {
+    prev_se   <- 0L
+    prev_comp <- 0L
+    b_prev <- b0_subj[j] +
+      rnorm(1, 0, biom_model$sd_innov /
+              sqrt(1 - biom_model$phi^2 + 1e-8))
+
+    for (t in seq_len(T_vis)) {
+      idx <- idx_fun(j, t)
+
+      # AR(1) biomarker
+      b_t <- biom_model$intercept +
+        biom_model$phi * (b_prev - biom_model$intercept) +
+        rnorm(1, 0, biom_model$sd_innov)
+      Biom[idx] <- b_t
+      b_prev <- b_t
+
+      # Side-effect
+      lp_se <- lp_se_base[idx] + se_model$lag_se * prev_se
+      p_se  <- inv_logit(lp_se)
+      se_t  <- rbinom(1L, 1L, clamp(p_se, 1e-6, 1 - 1e-6))
+
+      # Adherence
+      lp_adh <- lp_adh_base[idx] +
+        adherence_model$lag_comp * prev_comp +
+        adherence_model$se_effect * se_t +
+        adherence_model$biomarker_effect * b_t
+      p_adh <- inv_logit(lp_adh)
+
+      if (adherence_type == "binary") {
+        comp_t <- rbinom(1L, 1L, clamp(p_adh, 1e-6, 1 - 1e-6))
+        adh_t  <- as.numeric(comp_t)
+      } else {
+        k <- beta_concentration
+        a <- max(p_adh * k, 1e-6)
+        b <- max((1 - p_adh) * k, 1e-6)
+        adh_t  <- stats::rbeta(1L, a, b)
+        comp_t <- as.integer(adh_t >= compliance_threshold)
+      }
+
+      SE[idx]   <- se_t
+      Adh[idx]  <- adh_t
+      Comp[idx] <- comp_t
+
+      prev_se   <- se_t
+      prev_comp <- comp_t
+    }
+  }
+
+  # Base data frame
+  out_df <- data.frame(
+    PatientID   = id,
+    Treatment   = trt,
+    Age         = age,
+    GenderMale  = male,
+    VisitNumber = visit,
+    VisitDate   = visit_date,
+    SideEffect  = SE,
+    Adherence   = Adh,
+    Compliant   = Comp,
+    Biomarker   = Biom
+  )
+
+  # Non-linear interaction features
+  # Interactions are included ONLY as products; no additive main effects.
+  # Linear models cannot detect these signals; tree-based models can.
+  if (non_linear_feature) {
+    out_df <- build_nl_columns(out_df, nonlin_coefs)
+  }
+
+  # -- Outcome generation -----------------------------------------------------
+  if (outcome_type %in% c("continuous", "binary")) {
+    lp_out <- outcome_model$intercept +
+      trt_out_effect +
+      outcome_model$adherence *
+        if (adherence_type == "binary") Comp else Adh +
+      outcome_model$se_effect * SE +
+      outcome_model$biomarker_effect * Biom +
+      outcome_model$time_trend * (visit - 1) +
+      u_i
+
+    if (non_linear_feature) {
+      lp_out <- add_nl_to_lp(lp_out, out_df, nonlin_coefs)
+    }
+
+    if (outcome_type == "continuous") {
+      Y <- lp_out + rnorm(nrow(out_df), 0, outcome_model$sd_error)
+    } else {
+      pY <- inv_logit(lp_out)
+      Y  <- rbinom(nrow(out_df), 1L, clamp(pY, 1e-6, 1 - 1e-6))
+    }
+    out_df$Outcome <- Y
+    return(out_df)
+  }
+
+  # TTE discrete-time hazard
+  lp_h <- tte_model$baseline_logit_h +
+    trt_logHR +
+    tte_model$adherence_logHR * Comp +
+    tte_model$se_logHR * SE +
+    tte_model$biomarker_logHR * Biom +
+    tte_model$time_trend_logHR * (visit - 1) +
+    u_i
+
+  if (non_linear_feature) {
+    lp_h <- add_nl_to_lp(lp_h, out_df, nonlin_coefs)
+  }
+
+  h <- inv_logit(lp_h)
+  Event <- rbinom(nrow(out_df), 1L, clamp(h, 1e-6, 1 - 1e-6))
+
+  out_df$Event  <- 0L
+  out_df$AtRisk <- 1L
+
+  # Vectorised first-event identification (avoids O(n^2) loop)
+  first_event_row <- tapply(
+    seq_len(nrow(out_df)), out_df$PatientID,
+    function(idx_rows) {
+      ev_rows <- idx_rows[Event[idx_rows] == 1]
+      if (length(ev_rows) == 0L) NA_integer_ else ev_rows[1L]
+    }
+  )
+  first_event_row <- unlist(first_event_row, use.names = FALSE)
+
+  # Assign events and censoring using vectorised row indexing
+  non_na <- which(!is.na(first_event_row))
+  for (j in non_na) {
+    pid    <- patient_data$PatientID[j]
+    fe_row <- first_event_row[j]
+    rows   <- which(out_df$PatientID == pid)
+    out_df$Event[fe_row] <- 1L
+    later <- rows[rows > fe_row]
+    if (length(later)) out_df$AtRisk[later] <- 0L
+  }
+
+  # Start-stop intervals
+  nl_cols <- grep("^NL_", names(out_df), value = TRUE)
+  by_pid <- split(out_df, out_df$PatientID)
+  tte_intervals <- do.call(rbind, lapply(by_pid, function(df_i) {
+    df_i <- df_i[order(df_i$VisitNumber), ]
+    t_abs <- as.numeric(df_i$VisitDate - min(df_i$VisitDate))
+    tstart <- c(0, head(t_abs, -1))
+    tstop  <- t_abs
+    base <- data.frame(
+      PatientID   = df_i$PatientID,
+      Treatment   = df_i$Treatment,
+      Age         = df_i$Age,
+      GenderMale  = df_i$GenderMale,
+      VisitNumber = df_i$VisitNumber,
+      SideEffect  = df_i$SideEffect,
+      Compliant   = df_i$Compliant,
+      Adherence   = df_i$Adherence,
+      Biomarker   = df_i$Biomarker,
+      tstart      = tstart,
+      tstop       = tstop,
+      event       = df_i$Event,
+      AtRisk      = df_i$AtRisk
+    )
+    for (nc in nl_cols) base[[nc]] <- df_i[[nc]]
+    base
+  }))
+
+  subj_event <- aggregate(
+    event ~ PatientID, data = tte_intervals,
+    FUN = function(x) any(x == 1)
+  )
+  names(subj_event)[2] <- "status"
+
+  at_risk_df <- filter_at_risk(tte_intervals)
+  subj_time <- aggregate(
+    tstop ~ PatientID, data = at_risk_df,
+    FUN = function(x) max(x, na.rm = TRUE)
+  )
+  names(subj_time)[2] <- "time"
+
+  tte_subject <- merge(subj_time, subj_event, by = "PatientID", all.x = TRUE)
+  tte_subject$status[is.na(tte_subject$status)] <- 0L
+  tte_subject$status <- as.integer(tte_subject$status)
+
+  list(
+    long          = out_df,
+    tte_intervals = tte_intervals,
+    tte_subject   = tte_subject
+  )
+}
+
+# --- Internal helpers for non-linear interactions ----------------------------
+
+#' Build non-linear interaction columns
+#'
+#' Parses \code{nonlin_coefs} names in \code{"VarA:VarB"} form, validates
+#' that both variables exist in \code{df}, and creates product columns named
+#' \code{NL_<VarA>_<VarB}.
+#'
+#' @param df Data frame containing the predictor variables.
+#' @param nonlin_coefs Named numeric vector; names must be \code{"VarA:VarB"}.
+#' @return \code{df} with additional \code{NL_*} columns (invisibly).
+#' @keywords internal
+build_nl_columns <- function(df, nonlin_coefs) {
+  if (length(nonlin_coefs) == 0L) return(df)
+  nm_names <- names(nonlin_coefs)
+  for (i in seq_along(nonlin_coefs)) {
+    nm <- nm_names[i]
+    parts <- strsplit(nm, ":", fixed = TRUE)[[1L]]
+    if (length(parts) != 2L) {
+      warning("nonlin_coefs: '", nm, "' does not follow 'VarA:VarB' format, skipping.")
+      next
+    }
+    if (!all(parts %in% names(df))) {
+      missing <- setdiff(parts, names(df))
+      warning("nonlin_coefs: variable(s) ", paste(missing, collapse = ", "),
+              " not in data, skipping '", nm, "'.")
+      next
+    }
+    col_name <- paste0("NL_", parts[1L], "_", parts[2L])
+    if (!col_name %in% names(df)) {
+      df[[col_name]] <- df[[parts[1L]]] * df[[parts[2L]]]
+    }
+  }
+  df
+}
+
+#' Add non-linear terms to a linear predictor vector
+#'
+#' For each entry in \code{nonlin_coefs}, looks up the corresponding
+#' \code{NL_<VarA>_<VarB>} column in \code{df} and adds the weighted
+#' interaction to \code{lp}.
+#'
+#' @param lp Numeric vector (linear predictor, modified in place).
+#' @param df Data frame containing the \code{NL_*} columns.
+#' @param nonlin_coefs Named numeric vector of interaction coefficients.
+#' @return Updated linear predictor \code{lp}.
+#' @keywords internal
+add_nl_to_lp <- function(lp, df, nonlin_coefs) {
+  if (length(nonlin_coefs) == 0L) return(lp)
+  nm_names <- names(nonlin_coefs)
+  for (i in seq_along(nonlin_coefs)) {
+    nm <- nm_names[i]
+    parts <- strsplit(nm, ":", fixed = TRUE)[[1L]]
+    if (length(parts) == 2L) {
+      col_name <- paste0("NL_", parts[1L], "_", parts[2L])
+      if (col_name %in% names(df)) {
+        lp <- lp + nonlin_coefs[[i]] * df[[col_name]]
+      }
+    }
+  }
+  lp
+}
+
+# ---- C:/Users/jkyle/Documents/GitHub/pslongsim/R/treatment_map.R ----
+#' Define Treatment Relationship Map
+#'
+#' Creates a data frame mapping treatment levels to their effect parameters
+#' (adherence shift, outcome effect, log-hazard ratio, and side-effect shift).
+#'
+#' @param levels Character vector of treatment levels (must be non-empty).
+#' @param adh_shift Numeric vector: logit shift for adherence. Recycled to
+#'   match \code{length(levels)}; a length mismatch generates a warning.
+#' @param out_effect Numeric vector: main effect for outcome (continuous/binary).
+#'   Recycled with warning on length mismatch.
+#' @param logHR Numeric vector: log-hazard ratio for TTE.
+#'   Recycled with warning on length mismatch.
+#' @param se_shift Numeric vector: logit shift for side-effect risk.
+#'   Recycled with warning on length mismatch.
+#' @return A data.frame with one row per treatment level and rownames equal to
+#'   the treatment level strings.
+#' @examples
+#' map <- define_treatment_map(
+#'   c("Placebo", "Drug_A", "Drug_B"),
+#'   adh_shift  = c(0, -0.5, -0.9),
+#'   out_effect = c(0, 0.3, 0.7),
+#'   logHR      = c(0, -0.2, -0.5),
+#'   se_shift   = c(0, 0.2, 0.4)
+#' )
+#' map
+#' @export
+define_treatment_map <- function(levels,
+                                 adh_shift = 0,
+                                 out_effect = 0,
+                                 logHR = 0,
+                                 se_shift = 0) {
+  stopifnot(
+    "`levels` must be a non-empty character vector." = is.character(levels) && length(levels) > 0L
+  )
+
+  L <- length(levels)
+  params <- list(adh_shift = adh_shift, out_effect = out_effect,
+                 logHR = logHR, se_shift = se_shift)
+  for (nm in names(params)) {
+    if (length(params[[nm]]) > 1L && length(params[[nm]]) != L) {
+      warning(nm, " has length ", length(params[[nm]]),
+              " but ", L, " treatment levels were specified; values will be recycled.",
+              call. = FALSE)
+    }
+  }
+
+  df <- data.frame(
+    Treatment  = factor(levels, levels = levels),
+    adh_shift  = rep(adh_shift, length.out = L),
+    out_effect = rep(out_effect, length.out = L),
+    logHR      = rep(logHR, length.out = L),
+    se_shift   = rep(se_shift, length.out = L)
+  )
+  rownames(df) <- as.character(df$Treatment)
+  df
+}
+
+# ---- C:/Users/jkyle/Documents/GitHub/pslongsim/R/utils.R ----
+#' Inverse Logit
+#'
+#' Computes the inverse logit (logistic) transformation.
+#'
+#' @param x Numeric vector.
+#' @return Numeric vector of probabilities.
+#' @examples
+#' inv_logit(0)
+#' inv_logit(c(-2, 0, 2))
+#' @export
+inv_logit <- function(x) 1 / (1 + exp(-x))
+
+#' Clamp Numeric Values
+#'
+#' Constrains a numeric vector to lie within \code{[lower, upper]}.
+#'
+#' @param x Numeric vector.
+#' @param lower Lower bound (must be <= upper).
+#' @param upper Upper bound (must be >= lower).
+#' @return Numeric vector with values clamped to \code{[lower, upper]}.
+#' @examples
+#' clamp(c(-1, 5, 3), 0, 4)
+#' clamp(0.5, 0, 1)
+#' @export
+clamp <- function(x, lower, upper) {
+  if (lower > upper) {
+    stop("`lower` (", lower, ") must be <= `upper` (", upper, ").")
+  }
+  pmax(lower, pmin(x, upper))
+}
+
+#' Validate Required Columns Exist in a Data Frame
+#'
+#' @param df Data frame to check.
+#' @param cols Character vector of required column names.
+#' @param fn_name Name of the calling function (for the error message).
+#' @return Invisible NULL. Called for its side effect of raising an error.
+#' @keywords internal
+validate_columns <- function(df, cols, fn_name = sys.call(sys.parent())[[1]]) {
+  missing <- setdiff(cols, names(df))
+  if (length(missing) > 0L) {
+    stop(fn_name, ": missing required column(s): ",
+         paste(missing, collapse = ", "))
+  }
+  invisible(NULL)
+}
+
+#' Validate Data Frame Has Sufficient Rows
+#'
+#' @param df Data frame.
+#' @param min_rows Minimum number of rows required.
+#' @param fn_name Name of the calling function.
+#' @return Invisible NULL.
+#' @keywords internal
+validate_min_rows <- function(df, min_rows, fn_name = sys.call(sys.parent())[[1]]) {
+  if (nrow(df) < min_rows) {
+    stop(fn_name, ": requires at least ", min_rows, " row(s), got ", nrow(df), ".")
+  }
+  invisible(NULL)
+}
+
+#' Check That a Suggested Package Is Installed
+#'
+#' @param pkg Character string: package name.
+#' @return Invisible NULL. Called for its side effect of raising an error.
+#' @keywords internal
+require_suggested <- function(pkg) {
+  if (!requireNamespace(pkg, quietly = TRUE)) {
+    stop("Package '", pkg, "' is required but not installed. ",
+         "Install it with install.packages('", pkg, "').")
+  }
+  invisible(NULL)
+}
+
+# Global variables to silence R CMD check NOTES for NSE / pipeline targets
+if (getRversion() >= "2.15.1") {
+  utils::globalVariables(c(
+    "AtRisk", "PatientID", "w", "event", "tstop", "p_marg",
+    "demo", "trt_map", "dat_cont", "dat_bin", "dat_tte",
+    "ps_cont", "ps_bin", "ps_tte",
+    "dat_cont_w", "dat_bin_w", "tte_ivl_w",
+    "msm_cont", "msm_bin", "msm_cox",
+    "summary_cont", "summary_bin", "summary_cox",
+    "Compliant", "Treatment", "VisitNumber",
+    "Age", "GenderMale", "SideEffect", "Biomarker"
+  ))
+}
+
+#' @importFrom stats aggregate as.formula binomial gaussian predict quantile rbinom rnorm
+#' @importFrom utils head
+#' @importFrom recipes recipe step_dummy step_zv step_normalize all_nominal_predictors all_numeric_predictors all_predictors
+#' @importFrom parsnip logistic_reg boost_tree rand_forest set_engine set_mode set_args fit
+#' @importFrom workflows workflow add_model add_recipe
+#' @importFrom rsample vfold_cv
+#' @importFrom tune tune_grid control_grid select_best finalize_workflow
+#' @importFrom yardstick metric_set roc_auc
+#' @importFrom dials grid_regular mtry
+NULL
+
+# ---- C:/Users/jkyle/Documents/GitHub/pslongsim/R/weights_and_msm.R ----
+#' Compute Stabilized IPTW for Binary Compliance
+#'
+#' Calculates stabilised inverse probability of treatment weights using
+#' marginal and conditional (propensity-score) probabilities of compliance.
+#' Optionally truncates extreme weights at specified quantiles.
+#'
+#' @param df Data frame containing the compliance, propensity score, and
+#'   visit number columns.
+#' @param c_var Character: name of the binary compliance column.
+#' @param ps_var Character: name of the propensity score column.
+#' @param visit_var Character: name of the visit number column.
+#' @param truncate Numeric vector of length 2 giving the lower and upper
+#'   quantiles for weight trimming.  Set to \code{NULL} to disable.
+#' @return A data frame (the input with an additional \code{w} column).
+#' @seealso \code{\link{fit_ps_tidymodels}}, \code{\link{fit_msm_gee_cont}}
+#' @examples
+#' demo <- generate_patient_data_demographic(num_patients = 50, seed = 1)
+#' trt_map <- suppressWarnings(define_treatment_map(levels(demo$Treatment)))
+#' dat <- generate_longitudinal_data(demo, num_visits = 4, trt_map = trt_map)
+#' ps <- fit_ps_tidymodels(dat, model = "glm")
+#' dat$ps_hat <- ps$ps_hat
+#' dat_w <- compute_stabilized_iptw(dat)
+#' range(dat_w$w)
+#' @export
+compute_stabilized_iptw <- function(df,
+                                    c_var = "Compliant",
+                                    ps_var = "ps_hat",
+                                    visit_var = "VisitNumber",
+                                    truncate = c(0.01, 0.99)) {
+  validate_columns(df, c(c_var, ps_var, visit_var), "compute_stabilized_iptw")
+  validate_min_rows(df, 1L, "compute_stabilized_iptw")
+
+  marg <- stats::aggregate(df[[c_var]] ~ df[[visit_var]], data = df, FUN = mean)
+  names(marg) <- c(visit_var, "p_marg")
+  df <- merge(df, marg, by = visit_var, all.x = TRUE, sort = FALSE)
+
+  eps <- 1e-6
+  C  <- df[[c_var]]
+  e  <- clamp(df[[ps_var]], eps, 1 - eps)
+  pM <- clamp(df[["p_marg"]], eps, 1 - eps)
+  w  <- (pM^C) * ((1 - pM)^(1 - C)) / (e^C) / ((1 - e)^(1 - C))
+
+  if (!is.null(truncate)) {
+    q <- stats::quantile(w, probs = clamp(truncate, 0, 1), na.rm = TRUE)
+    w <- clamp(w, q[1], q[2])
+  }
+  df$w <- as.numeric(w)
+  df
+}
+
+#' Filter Data to At-Risk Observations
+#'
+#' Subsets a data frame to rows where the \code{AtRisk} column equals 1.
+#'
+#' @param df Data frame with an \code{AtRisk} column.
+#' @return Filtered data frame.
+#' @seealso \code{\link{generate_longitudinal_data}},
+#'   \code{\link{fit_msm_cox}}
+#' @examples
+#' demo <- generate_patient_data_demographic(num_patients = 50, seed = 1)
+#' trt_map <- suppressWarnings(define_treatment_map(levels(demo$Treatment)))
+#' tte <- generate_longitudinal_data(demo, num_visits = 5, trt_map = trt_map,
+#'                                   outcome_type = "tte")
+#' nrow(tte$tte_intervals)
+#' nrow(filter_at_risk(tte$tte_intervals))
+#' @export
+filter_at_risk <- function(df) {
+  validate_columns(df, "AtRisk", "filter_at_risk")
+  df[df$AtRisk == 1L, , drop = FALSE]
+}
+
+#' Fit GEE MSM for Continuous Outcomes
+#'
+#' Fits a generalised estimating equations marginal structural model for
+#' a continuous outcome, using an independence working correlation and
+#' robust (sandwich) standard errors.
+#'
+#' @param df_w Weighted data frame with columns \code{Outcome},
+#'   \code{Treatment}, \code{VisitNumber}, \code{PatientID}, and \code{w}.
+#' @return A \code{geeglm} object.
+#' @seealso \code{\link{compute_stabilized_iptw}},
+#'   \code{\link{fit_msm_gee_bin}}, \code{\link{fit_msm_cox}}
+#' @examples
+#' demo <- generate_patient_data_demographic(num_patients = 50, seed = 1)
+#' trt_map <- suppressWarnings(define_treatment_map(levels(demo$Treatment)))
+#' dat <- generate_longitudinal_data(demo, num_visits = 4, trt_map = trt_map)
+#' ps <- fit_ps_tidymodels(dat, model = "glm")
+#' dat$ps_hat <- ps$ps_hat
+#' dat_w <- compute_stabilized_iptw(dat)
+#' msm <- fit_msm_gee_cont(dat_w)
+#' summary(msm)
+#' @export
+fit_msm_gee_cont <- function(df_w) {
+  .fit_msm_gee(df_w, family = gaussian(), fn_name = "fit_msm_gee_cont")
+}
+
+#' Fit GEE MSM for Binary Outcomes
+#'
+#' Fits a generalised estimating equations marginal structural model for
+#' a binary outcome, using an independence working correlation and
+#' robust (sandwich) standard errors.
+#'
+#' @param df_w Weighted data frame with columns \code{Outcome},
+#'   \code{Treatment}, \code{VisitNumber}, \code{PatientID}, and \code{w}.
+#' @return A \code{geeglm} object.
+#' @seealso \code{\link{compute_stabilized_iptw}},
+#'   \code{\link{fit_msm_gee_cont}}, \code{\link{fit_msm_cox}}
+#' @examples
+#' demo <- generate_patient_data_demographic(num_patients = 50, seed = 1)
+#' trt_map <- suppressWarnings(define_treatment_map(levels(demo$Treatment)))
+#' dat <- generate_longitudinal_data(demo, num_visits = 4, trt_map = trt_map,
+#'                                   outcome_type = "binary")
+#' ps <- fit_ps_tidymodels(dat, model = "glm")
+#' dat$ps_hat <- ps$ps_hat
+#' dat_w <- compute_stabilized_iptw(dat)
+#' msm <- fit_msm_gee_bin(dat_w)
+#' summary(msm)
+#' @export
+fit_msm_gee_bin <- function(df_w) {
+  .fit_msm_gee(df_w, family = binomial(), fn_name = "fit_msm_gee_bin")
+}
+
+#' @keywords internal
+.fit_msm_gee <- function(df_w, family, fn_name) {
+  validate_columns(df_w, c("Outcome", "Treatment", "VisitNumber",
+                           "PatientID", "w"), fn_name)
+  validate_min_rows(df_w, 10L, fn_name)
+  tryCatch({
+    geepack::geeglm(
+      Outcome ~ Treatment + VisitNumber,
+      id      = PatientID,
+      weights = w,
+      family  = family,
+      corstr  = "independence",
+      data    = df_w,
+      std.err = "san.se"
+    )
+  }, error = function(e) {
+    stop(fn_name, ": GEE model failed to converge: ", e$message,
+         call. = FALSE)
+  })
+}
+
+#' Fit Cox MSM (Start-Stop Intervals) with Robust SEs
+#'
+#' Fits a Cox proportional hazards marginal structural model using
+#' start-stop interval data and robust (cluster-robust) standard errors.
+#'
+#' @param tte_ivl_w Weighted TTE interval data frame with columns
+#'   \code{tstart}, \code{tstop}, \code{event}, \code{Treatment},
+#'   \code{PatientID}, and \code{w}.
+#' @return A \code{coxph} object.
+#' @seealso \code{\link{compute_stabilized_iptw}},
+#'   \code{\link{fit_msm_gee_cont}}, \code{\link{fit_msm_gee_bin}},
+#'   \code{\link{filter_at_risk}}
+#' @examples
+#' demo <- generate_patient_data_demographic(num_patients = 50, seed = 1)
+#' trt_map <- suppressWarnings(define_treatment_map(levels(demo$Treatment)))
+#' tte <- generate_longitudinal_data(demo, num_visits = 6, trt_map = trt_map,
+#'                                   outcome_type = "tte")
+#' ivl <- filter_at_risk(tte$tte_intervals)
+#' ps <- fit_ps_tidymodels(ivl, model = "glm")
+#' ivl$ps_hat <- ps$ps_hat
+#' ivl_w <- compute_stabilized_iptw(ivl)
+#' cox_m <- fit_msm_cox(ivl_w)
+#' summary(cox_m)
+#' @export
+fit_msm_cox <- function(tte_ivl_w) {
+  validate_columns(tte_ivl_w, c("tstart", "tstop", "event",
+                                 "Treatment", "PatientID", "w"),
+                   "fit_msm_cox")
+  validate_min_rows(tte_ivl_w, 10L, "fit_msm_cox")
+
+  result <- tryCatch({
+    survival::coxph(
+      survival::Surv(tstart, tstop, event) ~ Treatment,
+      data    = tte_ivl_w,
+      weights = w,
+      robust  = TRUE,
+      cluster = PatientID
+    )
+  }, error = function(e) {
+    stop("fit_msm_cox: Cox model failed to fit: ", e$message,
+         call. = FALSE)
+  })
+  result
+}
+

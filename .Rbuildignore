@@ -14,3 +14,10 @@
 ^\.github$
 ^_pkgdown\.yml$
 ^pslongSim_.*\.tar\.gz$
+^\.dockerignore$
+^Dockerfile$
+^SEPARATION_NOTES\.md$
+^TIDYMODELS_DOCKER_GUIDE\.txt$
+^code_bundle\.txt$
+^release_workflow\.R$
+^R/notes\.qmd$

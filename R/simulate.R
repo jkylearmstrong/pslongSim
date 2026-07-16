@@ -349,10 +349,10 @@ generate_longitudinal_data <- function(
 
   # -- Outcome generation -----------------------------------------------------
   if (outcome_type %in% c("continuous", "binary")) {
+    adherence_signal <- if (adherence_type == "binary") Comp else Adh
     lp_out <- outcome_model$intercept +
       trt_out_effect +
-      outcome_model$adherence *
-        if (adherence_type == "binary") Comp else Adh +
+      outcome_model$adherence * adherence_signal +
       outcome_model$se_effect * SE +
       outcome_model$biomarker_effect * Biom +
       outcome_model$time_trend * (visit - 1) +
@@ -399,13 +399,12 @@ generate_longitudinal_data <- function(
       if (length(ev_rows) == 0L) NA_integer_ else ev_rows[1L]
     }
   )
-  first_event_row <- unlist(first_event_row, use.names = FALSE)
+  first_event_row <- unlist(first_event_row, use.names = TRUE)
 
-  # Assign events and censoring using vectorised row indexing
-  non_na <- which(!is.na(first_event_row))
-  for (j in non_na) {
-    pid    <- patient_data$PatientID[j]
-    fe_row <- first_event_row[j]
+  # Assign events and censoring using PatientID mapping
+  non_na_pids <- names(first_event_row)[!is.na(first_event_row)]
+  for (pid in non_na_pids) {
+    fe_row <- first_event_row[[pid]]
     rows   <- which(out_df$PatientID == pid)
     out_df$Event[fe_row] <- 1L
     later <- rows[rows > fe_row]

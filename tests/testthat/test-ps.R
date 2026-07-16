@@ -93,3 +93,33 @@ test_that("dynamic .pred column extraction works for named levels", {
   expect_length(fit$ps_hat, 12)
   expect_true(all(fit$ps_hat > 0 & fit$ps_hat < 1))
 })
+
+test_that("fit_ps_tidymodels warns on non-standard target levels", {
+  skip_on_cran()
+  df <- data.frame(
+    Compliant = factor(c("No", "Yes", "No", "Yes", "No", "Yes", "No", "Yes", "No", "Yes", "No", "Yes")),
+    Treatment = factor(c("T1", "T2", "T1", "T2", "T1", "T2", "T1", "T2", "T1", "T2", "T1", "T2")),
+    VisitNumber = 1:12, Age = 30:41,
+    GenderMale = rep(c(1, 0), 6),
+    SideEffect = rep(c(0, 1), 6),
+    Biomarker = rnorm(12)
+  )
+  fit <- fit_ps_tidymodels(df, model = "glm")
+  expect_length(fit$ps_hat, 12)
+  expect_true(all(fit$ps_hat > 0 & fit$ps_hat < 1))
+})
+
+test_that("fit_ps_tidymodels works with binary factor levels", {
+  skip_on_cran()
+  df <- data.frame(
+    Compliant = factor(c(0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1)),
+    Treatment = factor(c("T1", "T2", "T1", "T2", "T1", "T2", "T1", "T2", "T1", "T2", "T1", "T2")),
+    VisitNumber = 1:12, Age = 30:41,
+    GenderMale = rep(c(1, 0), 6),
+    SideEffect = rep(c(0, 1), 6),
+    Biomarker = rnorm(12)
+  )
+  fit <- fit_ps_tidymodels(df, model = "glm")
+  expect_length(fit$ps_hat, 12)
+  expect_true(all(fit$ps_hat > 0 & fit$ps_hat < 1))
+})

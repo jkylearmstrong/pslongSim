@@ -18,13 +18,14 @@ tar_option_set(
                  "readr", "forcats", "tidymodels", "parsnip", "recipes",
                  "workflows", "rsample", "tune", "yardstick", "lme4", "gbm",
                  "twang", "readxl", "writexl", "xgboost", "ranger", "here",
-                 "crew", "MLPScore"),
+                 "crew", "MLPScore", "pslongSim"),
     format = "rds",
     controller = if (Sys.getenv("MLPSCORE_NO_CREW", unset = "") != "") NULL else crew::crew_controller_local(workers = max(1L, min(parallelly::availableCores() - 1L, 4L)))
 )
 
 # Source functions
 tar_source()
+source("helpers.R")
 
 # Define scenario values (Expanded for Figs 4-7)
 rho_vals <- c(0, 0.2, 0.5, 0.8)
@@ -48,45 +49,111 @@ scenario_map <- tar_map(
         sim_data,
         {
             p <- base_params
-            p[["rho_uv"]] <- as.numeric(rho_uv)
-            p[["adherence_intercept"]] <- as.numeric(adherence_intercept)
-            # Fixed: Ensure default effects are passed if not in Excel
-            p$adherence_severity <- 0.5
-            p$adherence_comorbidity <- 0.2
-            p$outcome_severity <- 1.0
-            p$outcome_comorbidity <- 0.5
-
-            # Use deterministic but unique seed per scenario
-            # Simple hash-like numeric value: (rho_uv * 10) + (adherence_intercept * 100)
-            # But let's use something robust
+            n_coh <- as.integer(p$n_cohorts %||% 3)
+            trt_pref <- p$treatment_prefix %||% "Treatment_"
             s_seed <- as.integer(abs(rho_uv * 1000 + adherence_intercept * 100)) + 12345
-            run_simulation(p, seed = s_seed)
+            
+            demo <- pslongSim::generate_patient_data_demographic(
+                num_patients = as.numeric(p$num_patients %||% 1000),
+                n_cohorts    = n_coh,
+                treatment_prefix = trt_pref,
+                seed         = s_seed
+            )
+            
+            adherence_shifts <- sapply(seq_len(n_coh), function(i) {
+                as.numeric(p[[paste0("trt", i, "_adherence_shift")]] %||% 0)
+            })
+            names(adherence_shifts) <- paste0(trt_pref, seq_len(n_coh))
+            
+            outcome_effects <- sapply(seq_len(n_coh), function(i) {
+                as.numeric(p[[paste0("trt", i, "_outcome_effect")]] %||% 0)
+            })
+            names(outcome_effects) <- paste0(trt_pref, seq_len(n_coh))
+            
+            se_shifts <- sapply(seq_len(n_coh), function(i) {
+                as.numeric(p[[paste0("trt", i, "_se_shift")]] %||% 0)
+            })
+            names(se_shifts) <- paste0(trt_pref, seq_len(n_coh))
+            
+            trt_map <- pslongSim::define_treatment_map(
+                levels = levels(demo$Treatment),
+                adh_shift = adherence_shifts,
+                out_effect = outcome_effects,
+                se_shift = se_shifts
+            )
+            
+            out_type <- if (!is.null(p$outcome_type)) tolower(trimws(p$outcome_type)) else "continuous"
+            ad_type <- if (!is.null(p$adherence_type)) tolower(trimws(p$adherence_type)) else "beta"
+            
+            pslongSim::generate_longitudinal_data(
+                patient_data   = demo,
+                num_visits     = as.numeric(p$num_visits %||% 5),
+                seed           = s_seed + 1L,
+                trt_map        = trt_map,
+                adherence_type = ad_type,
+                outcome_type   = out_type,
+                beta_concentration = as.numeric(p$beta_concentration %||% 30),
+                compliance_threshold = as.numeric(p$compliance_threshold %||% 0.80),
+                sd_adherence_re = as.numeric(p$adherence_sd_subject %||% 1.0),
+                adherence_model = list(
+                    intercept        = as.numeric(adherence_intercept),
+                    age              = as.numeric(p$adherence_age %||% 0),
+                    male             = as.numeric(p$adherence_male %||% 0),
+                    time_trend       = as.numeric(p$adherence_time_trend %||% 0),
+                    lag_comp         = as.numeric(p$adherence_lag_comp %||% 0),
+                    se_effect        = as.numeric(p$adherence_symptom_score %||% -0.2),
+                    biomarker_effect = 0
+                ),
+                outcome_model = list(
+                    intercept        = as.numeric(p$outcome_intercept %||% 0),
+                    adherence        = as.numeric(p$outcome_adherence %||% 0),
+                    se_effect        = as.numeric(p$outcome_symptom_score %||% 0.4),
+                    biomarker_effect = 0,
+                    time_trend       = as.numeric(p$outcome_time_trend %||% 0),
+                    sd_subject       = as.numeric(p$outcome_sd_subject %||% 0.7),
+                    sd_error         = as.numeric(p$outcome_sd_error %||% 1.0)
+                ),
+                rho_uv = as.numeric(rho_uv)
+            )
         }
     ),
     tar_target(
+        v_map,
+        MLPScore::default_var_map(
+            id = "PatientID",
+            visit = "VisitNumber",
+            treatment = "Treatment",
+            outcome = "Outcome",
+            adherence = "Adherence",
+            compliant = "Compliant",
+            matching_features = c("Age", "GenderMale", "SideEffect", "Biomarker"),
+            repeated_features = NULL
+        )
+    ),
+    tar_target(
         weighted_data_obs,
-        estimate_ps_and_weights(sim_data, level = "obs", compliance_threshold = as.numeric(base_params$compliance_threshold %||% 0.80))
+        estimate_ps_and_weights(sim_data, level = "obs", var_map = v_map, compliance_threshold = as.numeric(base_params$compliance_threshold %||% 0.80))
     ),
     tar_target(
         pops_obs,
-        get_comparison_populations(weighted_data_obs, threshold_pt = as.numeric(base_params$compliance_threshold %||% 0.80), threshold_obs = as.numeric(base_params$compliance_threshold %||% 0.80))
+        get_comparison_populations(weighted_data_obs, var_map = v_map, threshold_pt = as.numeric(base_params$compliance_threshold %||% 0.80), threshold_obs = as.numeric(base_params$compliance_threshold %||% 0.80))
     ),
     tar_target(
         summary_obs,
-        summarize_comparisons(weighted_data_obs, pops_obs, level = "obs") %>%
+        summarize_comparisons(weighted_data_obs, pops_obs, level = "obs", var_map = v_map) %>%
             mutate(rho_uv = rho_uv, adherence_intercept = adherence_intercept)
     ),
     tar_target(
         weighted_data_pt,
-        estimate_ps_and_weights(sim_data, level = "pt", compliance_threshold = as.numeric(base_params$compliance_threshold %||% 0.80))
+        estimate_ps_and_weights(sim_data, level = "pt", var_map = v_map, compliance_threshold = as.numeric(base_params$compliance_threshold %||% 0.80))
     ),
     tar_target(
         pops_pt,
-        get_comparison_populations(weighted_data_pt, threshold_pt = as.numeric(base_params$compliance_threshold %||% 0.80), threshold_obs = as.numeric(base_params$compliance_threshold %||% 0.80))
+        get_comparison_populations(weighted_data_pt, var_map = v_map, threshold_pt = as.numeric(base_params$compliance_threshold %||% 0.80), threshold_obs = as.numeric(base_params$compliance_threshold %||% 0.80))
     ),
     tar_target(
         summary_pt,
-        summarize_comparisons(weighted_data_pt, pops_pt, level = "pt") %>%
+        summarize_comparisons(weighted_data_pt, pops_pt, level = "pt", var_map = v_map) %>%
             mutate(rho_uv = rho_uv, adherence_intercept = adherence_intercept)
     )
 )
@@ -128,7 +195,7 @@ list(
         true_effects,
         {
             # Dynamically compute true effects relative to the reference arm using get_true_effects
-            effects <- MLPScore::get_true_effects(base_params)
+            effects <- get_true_effects(base_params)
             # Remove the first cohort since it is the reference (relative effect = 0)
             effects[-1]
         }

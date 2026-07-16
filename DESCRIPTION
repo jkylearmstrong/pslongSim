@@ -1,7 +1,7 @@
 Package: pslongSim
 Type: Package
 Title: Longitudinal Propensity Score Simulation for Clinical Trials
-Version: 0.3.5
+Version: 0.3.6
 Authors@R: person(
     "J Kyle", "Armstrong",
     role = c("aut", "cre"),
@@ -35,9 +35,11 @@ Suggests:
     withr,
     randomForest,
     xgboost (>= 1.7.0),
-    ranger (>= 0.15.0)
+    ranger (>= 0.15.0),
+    MLPScore
 VignetteBuilder: knitr
 Config/testthat/edition: 3
 URL: https://github.com/jkylearmstrong/pslongSim
 BugReports: https://github.com/jkylearmstrong/pslongSim/issues
 Config/roxygen2/version: 8.0.0
+Remotes: github::jkylearmstrong-temple/ML-PScore

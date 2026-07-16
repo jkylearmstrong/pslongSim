@@ -1,0 +1,242 @@
+# pslongSim: Tidymodels Best Practices & Docker Integration
+
+## Overview
+
+This document outlines best practices for maintaining `pslongSim` — an R package for simulating longitudinal propensity score models using the tidymodels ecosystem — and containerizing it with Docker.
+
+## R & Tidymodels Best Practices
+
+### 1. Recipe & Model Specifications
+Your `ps_recipe()` and `ps_model_spec()` functions exemplify solid tidymodels design:
+- **Recipes** handle preprocessing in a declarative pipeline: dummy encoding, zero-variance removal, normalization
+- **Parsnip specs** separate model algorithm from engine, allowing easy swaps (GLM ↔ XGBoost ↔ Ranger)
+- **Standardized interface** via `fit()` and `predict()` ensures consistency across model types
+
+**Recommendation**: Document the preprocessing steps in roxygen comments for users unfamiliar with recipes syntax.
+
+### 2. Input Validation
+Your functions use `stopifnot()` and custom validators (`validate_columns()`, `validate_min_rows()`). This is best practice for catching user errors early.
+
+**Recommendation**: Consider adding type hints in roxygen `@param` tags to clarify expected types:
+```r
+#' @param df Data frame containing predictors and outcome
+#' @param model One of \code{"glm"}, \code{"xgboost"}, or \code{"ranger"}
+```
+
+### 3. Reproducibility via `set.seed()`
+`generate_longitudinal_data()` sets the global seed at entry. This ensures reproducible simulation.
+
+**Recommendation**: Document seed behavior in roxygen to clarify that calling functions with the same seed + parameters produces identical results.
+
+### 4. Non-linear Feature Engineering
+The `non_linear_feature` toggle and `nonlin_coefs` parametrization is a strong design choice:
+- Interactions are multiplicative (undetectable by linear models, detectable by tree-based models)
+- Named coefficients (`"Age:SideEffect"`) are more maintainable than positional lists
+- Documentation clearly explains when/why to use this feature
+
+**Recommendation**: Add examples in vignettes showing performance differences (linear vs. tree-based models) with `non_linear_feature = TRUE`.
+
+### 5. Workflow Composition
+Your workflows in `fit_ps_tidymodels()` follow the recommended tidymodels pattern:
+```r
+workflows::workflow() |>
+  workflows::add_model(spec) |>
+  workflows::add_recipe(rec) |>
+  tune::finalize_workflow(...) |>
+  parsnip::fit(...)
+```
+
+This is the canonical approach. No improvements needed here.
+
+### 6. Testing
+Your test suite (`tests/testthat/`) covers core functionality. Recommendations:
+- **test-ps.R**: Add edge cases (e.g., single-class outcome, missing predictors)
+- **test-simulate.R**: Add snapshot tests for `generate_longitudinal_data()` to catch unintended changes in simulation output
+- **test-pipeline.R**: Confirm `make_default_simulation_targets()` runs without errors
+
+### 7. Cross-validation & Tuning
+Your `tune_ps` parameter uses 5-fold cross-validation with stratification. Consider:
+- Documenting why 5 folds (vs. 10) was chosen
+- Allowing users to specify custom resampling schemes via `resamples` parameter
+
+---
+
+## Docker Integration
+
+### Dockerfile Strategy
+
+**Multi-stage build** (builder → runtime):
+1. **Builder stage**: Installs compile-time dependencies, pre-downloads tidymodels packages from RSPM (binary, faster)
+2. **Runtime stage**: Slim image with only runtime libraries (no dev tools, no build overhead)
+
+**Key optimizations**:
+- Uses Rocker's prebuilt R 4.4.0 image (includes system libs for many packages)
+- RSPM binaries avoid lengthy compilation (especially important for tidymodels dependencies)
+- `.dockerignore` excludes `_targets/`, `docs/`, `.git/` to keep context size small
+- `renv.lock` ensures exact dependency versions across builds
+
+### Building the Image
+
+```bash
+docker build -t pslongsim:latest .
+```
+
+If the build times out (large tidymodels dependency tree), use Buildx for parallelism:
+
+```bash
+docker buildx build --platform linux/amd64,linux/arm64 -t pslongsim:latest .
+```
+
+### Running the Container
+
+**Interactive R session**:
+```bash
+docker run -it pslongsim:latest
+```
+
+**Run a specific script**:
+```bash
+docker run --rm pslongsim:latest Rscript -e "targets::tar_make()"
+```
+
+**Bind-mount local code for development**:
+```bash
+docker run --rm -v "$(pwd):/workspace" pslongsim:latest Rscript -e "devtools::test()"
+```
+
+### Docker Compose (Optional)
+
+For coordinated testing + documentation builds:
+
+```yaml
+version: "3"
+services:
+  test:
+    build: .
+    volumes:
+      - .:/workspace
+    command: Rscript -e "devtools::test()"
+  
+  check:
+    build: .
+    volumes:
+      - .:/workspace
+    command: Rscript -e "devtools::check()"
+  
+  docs:
+    build: .
+    volumes:
+      - .:/workspace
+    command: Rscript -e "pkgdown::build_site()"
+```
+
+Then run:
+```bash
+docker compose up test check docs
+```
+
+---
+
+## Suggested Code Improvements
+
+### 1. Error Message Clarity
+Some error messages could be more actionable:
+
+**Current**:
+```r
+stop("generate_longitudinal_data: trt_map is missing rows for treatment levels: ...")
+```
+
+**Suggested**:
+```r
+stop("generate_longitudinal_data: trt_map is missing rows for treatment levels: ",
+     paste(setdiff(trt_levels, rownames(trt_map)), collapse = ", "),
+     ".\nExample: define_treatment_map(c('Treatment_1', 'Treatment_2'))")
+```
+
+### 2. Modularize Non-linear Feature Logic
+The `build_nl_columns()` and `add_nl_to_lp()` helpers are good, but consider exporting them if users want to extend:
+
+```r
+#' @export
+build_nl_columns <- function(df, nonlin_coefs) { ... }
+```
+
+This allows power users to manually add custom interactions.
+
+### 3. Document Correlation Structure
+The `rho_uv`, `rho_uw`, `rho_vw` parameters in `generate_longitudinal_data()` are well-named but deserve more roxygen detail:
+
+```r
+#' @param rho_uv Correlation between outcome frailty and adherence random effects (default 0.4).
+#' @param rho_uw Correlation between outcome frailty and side-effect random effects (default 0.2).
+#' @param rho_vw Correlation between adherence and side-effect random effects (default 0.2).
+```
+
+---
+
+## Release Workflow
+
+See `release_workflow.R` for the full 10-step checklist. Key steps:
+
+1. **Code + Manual Testing**: Ensure `targets::tar_make()` and toy examples work
+2. **Add/Update Tests**: New code should have corresponding tests
+3. **Run Full Checks**: `devtools::check()` should pass
+4. **Update NEWS.md**: Document user-facing changes
+5. **Update Version**: Edit DESCRIPTION
+6. **Document + pkgdown**: `devtools::document()` and `pkgdown::build_site()`
+7. **Build & Check**: Final verification
+8. **Commit** all changes
+9. **Tag** (if releasing): `git tag -a v<VERSION>`
+10. **Push**: `git push origin main --tags`
+
+Run the workflow script:
+```bash
+Rscript release_workflow.R
+```
+
+---
+
+## Continuous Integration (GitHub Actions)
+
+Consider adding a `.github/workflows/check.yml` for automated testing:
+
+```yaml
+name: R-CMD-check
+
+on: [push, pull_request]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: r-lib/actions/setup-r@v2
+      - uses: r-lib/actions/setup-r-dependencies@v2
+      - name: Run checks
+        run: devtools::check()
+        shell: Rscript {0}
+```
+
+This ensures every commit is tested.
+
+---
+
+## Summary
+
+**Strengths of pslongSim**:
+- Solid tidymodels integration with clear workflow composition
+- Good input validation and error handling
+- Excellent simulation flexibility (parametrized adherence, outcomes, non-linear features)
+- Well-structured R package with tests and documentation
+
+**Docker Integration**:
+- Multi-stage build for efficiency
+- RSPM binaries to avoid long compilation times
+- Optional docker-compose for streamlined testing
+
+**Next Steps**:
+1. Run the release workflow script to guide your 10-step process
+2. Consider the code improvement suggestions above
+3. Test the Dockerfile locally: `docker build -t pslongsim:test .`
+4. Optionally set up GitHub Actions for continuous testing

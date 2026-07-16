@@ -147,10 +147,17 @@ fit_ps_tidymodels <- function(df,
     if (is.null(resamples)) {
       resamples <- rsample::vfold_cv(df, v = 5, strata = outcome)
     }
+    
+    # Pre-bake recipe to determine number of predictors for mtry finalization
+    rec_prepped <- recipes::prep(rec, training = df)
+    baked_df <- recipes::bake(rec_prepped, new_data = NULL)
+    num_preds <- ncol(baked_df) - 1L
+    mtry_param <- dials::mtry(c(1L, as.integer(num_preds)))
+
     tune_res <- tune::tune_grid(
       wf, resamples = resamples,
       grid = if (is.numeric(grid)) {
-        dials::grid_regular(dials::mtry(), levels = grid)
+        dials::grid_regular(mtry_param, levels = grid)
       } else {
         grid
       },
@@ -167,6 +174,11 @@ fit_ps_tidymodels <- function(df,
   # (the "event" / "compliant" class).  tidymodels names columns as
   # .pred_<level>; we find the column matching the second level name.
   level2 <- levels(df[[outcome]])[2L]
+  standard_positives <- c("1", "TRUE", "yes", "Yes", "Y", "Compliant", "Success", "compliant", "true")
+  if (!(level2 %in% standard_positives)) {
+    warning("fit_ps_tidymodels: modeling probability of the second factor level ('", level2, 
+            "'). Ensure this represents the target event.", call. = FALSE)
+  }
   pred_col <- paste0(".pred_", level2)
   if (!pred_col %in% names(preds)) {
     # Fallback: take the last .pred_* column

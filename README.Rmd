@@ -27,6 +27,8 @@ The goal of **pslongSim** is to provide a robust simulation framework
 for evaluating propensity score methods for adjustment of time-varying
 non-adherence in longitudinal randomized clinical trials.
 
+For details on the architecture and division of labor between `pslongSim` and `MLPScore`, see [SEPARATION_NOTES.md](SEPARATION_NOTES.md).
+
 ## Installation
 
 You can install the development version of pslongSim from
@@ -35,6 +37,15 @@ You can install the development version of pslongSim from
 ```r
 # install.packages("devtools")
 devtools::install_github("jkylearmstrong/pslongSim")
+```
+
+## Dependencies
+
+This package has a development dependency on **MLPScore** for running the methods comparison pipeline. It is specified in `Suggests` and will be resolved if you install with development tools:
+
+```r
+# Install MLPScore from GitHub first
+devtools::install_github("jkylearmstrong-temple/ML-PScore")
 ```
 
 ## Running the Simulation

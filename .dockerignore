@@ -1,0 +1,13 @@
+.git
+.gitignore
+.github
+.Rproj.user
+.Rhistory
+.RData
+_targets
+docs
+README_files
+.DS_Store
+.vscode
+.Rbuildignore
+code_bundle.txt

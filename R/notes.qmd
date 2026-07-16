@@ -1,0 +1,102 @@
+This is a substantial bundle — 6 files from an R package (`pslongsim`), clearly a simulation/PS-weighting pipeline in the same domain as your MLPScore work. Let me finish reading it before reviewing, and verify one thing empirically since I spotted what looks like an operator-precedence issue.Confirmed empirically — there's a serious silent bug in `simulate.R`. Let me finish reading the remaining files before writing this up.Let me double-check I haven't missed a second instance of that precedence bug pattern anywhere else in the bundle.Let me verify my proposed fix for the weighting function actually works correctly before presenting it.This bundle is 6 files from an R package (`pslongsim`) — propensity-score/IPTW simulation and MSM fitting for longitudinal data. Two of the issues below are the dangerous kind: they run cleanly, produce output, and silently give wrong numbers. I verified both by actually executing the logic in R rather than just reading it, so these aren't guesses.
+
+### 1. Operator-precedence bug wipes out most of the outcome model — `simulate.R`, `generate_longitudinal_data()`, lines 721–728
+
+```r
+lp_out <- outcome_model$intercept +
+  trt_out_effect +
+  outcome_model$adherence *
+    if (adherence_type == "binary") Comp else Adh +
+  outcome_model$se_effect * SE +
+  outcome_model$biomarker_effect * Biom +
+  outcome_model$time_trend * (visit - 1) +
+  u_i
+```
+
+An unparenthesized `if/else` here isn't a ternary — R's `else` branch keeps consuming the rest of the `+` chain as its own expression, all the way to `u_i`. I ran it to confirm:
+
+- `adherence_type == "binary"` → `lp_out` reduces to just `intercept + trt_out_effect + adherence*Comp`. `se_effect*SE`, `biomarker_effect*Biom`, `time_trend`, and the subject random effect `u_i` are dropped entirely.
+- `adherence_type == "beta"` → those terms don't vanish, but get multiplied by `outcome_model$adherence` instead of their own coefficients — `u_i` included, so between-subject variance is silently rescaled by 0.9 too.
+
+This hits both `dat_cont` (`adherence_type="beta"`) and `dat_bin` (`"binary"`) in the default pipeline — both have an outcome DGP that doesn't match what `outcome_model` documents. `dat_tte`'s hazard (`lp_h`, lines 745–751) doesn't have this pattern, so TTE is unaffected — I grepped the rest of the bundle for the same construct and this is the only occurrence.
+
+**Fix** — minimal diff is wrapping the conditional in parens; cleaner is pulling it out:
+```r
+adherence_signal <- if (adherence_type == "binary") Comp else Adh
+lp_out <- outcome_model$intercept + trt_out_effect +
+  outcome_model$adherence * adherence_signal +
+  outcome_model$se_effect * SE +
+  outcome_model$biomarker_effect * Biom +
+  outcome_model$time_trend * (visit - 1) +
+  u_i
+```
+
+### 2. `merge()` scrambles row order → GEE clustering silently breaks — `weights_and_msm.R`, `compute_stabilized_iptw()`, lines 1089–1091
+
+```r
+marg <- stats::aggregate(df[[c_var]] ~ df[[visit_var]], data = df, FUN = mean)
+names(marg) <- c(visit_var, "p_marg")
+df <- merge(df, marg, by = visit_var, all.x = TRUE, sort = FALSE)
+```
+
+`sort = FALSE` only suppresses sorting by the join key — it doesn't preserve `df`'s original row order. I checked: `df` goes in ordered by (PatientID, VisitNumber); it comes out grouped by VisitNumber, so a given patient's rows are no longer contiguous.
+
+That's a real problem because `geepack::geeglm(..., id = PatientID)` (called from `.fit_msm_gee`, used by both `fit_msm_gee_cont` and `fit_msm_gee_bin`) identifies clusters by scanning for contiguous runs of the same id, not by grouping on value — the docs say so explicitly. I fit the same model both ways on synthetic data, 60 patients × 4 visits:
+
+| | contiguous (correct) | post-merge order |
+|---|---|---|
+| clusters detected | 60, size 4 | 240, size 1 |
+| Treatment SE | 0.393 | 0.225 |
+| Treatment p-value | 0.055 | 0.0008 |
+
+Same data, same model, only the row order differs — and it flips a borderline-null result into "highly significant." **`fit_msm_cox` is not affected** — I checked that too; `coxph(..., cluster=)` groups by value regardless of order.
+
+### 3. The weight isn't cumulative, and I think it needs to be
+
+Same function. `w <- (pM^C)*((1-pM)^(1-C)) / (e^C) / ((1-e)^(1-C))` is the correct single-visit stabilized ratio, but for a longitudinal MSM the weight at visit *t* should be the *product* of that ratio from baseline through *t* — not the visit-*t* ratio in isolation. Right now every visit is reweighted independently.
+
+This isn't pedantry given this specific DGP: adherence has `lag_comp`, side-effects have `lag_se`, biomarker is AR(1) — prior compliance shapes current biomarker/side-effects, which are exactly the covariates feeding the outcome model. That's the textbook setup cumulative IPTW exists for; a per-visit weight only adjusts for confounding within that visit and won't capture the accumulated selection. (`compute_stabilized_iptw` also never takes a `PatientID`/id argument at all, which reads like the cumulative step was never wired in rather than deliberately omitted.)
+
+I fixed #2 and #3 together and confirmed row order is preserved and the cumulative product matches a hand calculation:
+
+```r
+compute_stabilized_iptw <- function(df,
+                                     c_var = "Compliant",
+                                     ps_var = "ps_hat",
+                                     visit_var = "VisitNumber",
+                                     id_var = "PatientID",
+                                     truncate = c(0.01, 0.99)) {
+  validate_columns(df, c(c_var, ps_var, visit_var, id_var), "compute_stabilized_iptw")
+  validate_min_rows(df, 1L, "compute_stabilized_iptw")
+
+  eps <- 1e-6
+  C  <- df[[c_var]]
+  e  <- clamp(df[[ps_var]], eps, 1 - eps)
+  pM <- clamp(ave(C, df[[visit_var]], FUN = mean), eps, 1 - eps)
+  w_step <- (pM^C) * ((1 - pM)^(1 - C)) / (e^C) / ((1 - e)^(1 - C))
+
+  ord <- order(df[[id_var]], df[[visit_var]])
+  w <- numeric(nrow(df))
+  w[ord] <- ave(w_step[ord], df[[id_var]][ord], FUN = cumprod)
+
+  if (!is.null(truncate)) {
+    q <- stats::quantile(w, probs = clamp(truncate, 0, 1), na.rm = TRUE)
+    w <- clamp(w, q[1], q[2])
+  }
+  df$w <- as.numeric(w)
+  df
+}
+```
+Adding `id_var` is non-breaking for `pipeline.R` — `PatientID` is already in scope at all three call sites. Once weights are cumulative, worth revisiting whether truncation should be visit-specific rather than pooled across all person-time, since cumulative weights typically get more dispersed with follow-up — happy to help with that once you've confirmed the cumulative-product read is what you intended.
+
+### Smaller things worth fixing
+
+- **`fit_ps_tidymodels(..., tune_ps = TRUE)` is broken for `ranger`/`xgboost`.** `dials::mtry()` has an unset upper range; `dials::grid_regular(dials::mtry(), levels = grid)` errors immediately ("These arguments contain unknowns: `mtry`") unless finalized against the actual predictor count first via `dials::finalize()`. Confirmed by running it. Doesn't hit the default pipeline (`ps_bin`/`ps_tte` pass `tune_ps = FALSE`, `ps_cont` relies on the same default), but tuning is currently unusable for the two models it'd actually matter for.
+
+- **Silent fallback + implicit level-ordering assumption**, `ps_tidymodels.R` ~353–364: `ps_hat` is read off `.pred_<second factor level>`, falling back to "last `.pred_*` column" if that name isn't found. Works for the package's own simulated data because `Compliant` is always 0/1 (level 2 = "1" = compliant), but it's an `@export`ed general-purpose function with no check that the second level is actually the class of interest — a differently-coded `Compliant` column would silently flip the propensity scores rather than error.
+
+- **Fragile patient-index reconstruction**, `simulate.R` ~763–782 (TTE event assignment): `first_event_row` comes out of `tapply()` ordered alphabetically by `PatientID`; the loop does `pid <- patient_data$PatientID[j]`, treating that alphabetical position as a row index into `patient_data`. Works today only because IDs are zero-padded (`sprintf("%04d", ...)`), so alphabetical order matches row order — breaks the moment `num_patients >= 10000` ("P10000" < "P9999" alphabetically) or if called with externally-supplied `patient_data`. `names(first_event_row)[j]` is right there and would be robust regardless.
+
+- `.fit_msm_gee` and `fit_msm_cox` both wrap their model call in `tryCatch` and relabel *any* error as "failed to converge" / "failed to fit" — masks real causes (missing column, rank-deficient design matrix) behind a misleading message.
+
+Want me to turn the two critical fixes into a TASKS.md with testthat cases, same as we've done for MLPScore?

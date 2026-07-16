@@ -1,3 +1,20 @@
+# pslongSim 0.3.6
+
+## Bug Fixes & Refactoring
+
+* **Outcome Formula**: Fixed operator-precedence bug in `simulate.R` for binary vs. continuous/beta compliance outcome calculations.
+* **GEE Clustering (Stabilized IPTW)**: Replaced `merge()` with `ave()` in `compute_stabilized_iptw()` to fully preserve original row ordering, avoiding scrambled-row bugs in GEE cluster modeling.
+* **Cumulative IPTW Calculation**: Added `id_var = "PatientID"` and implemented cumulative weight multiplication across patient timelines using `cumprod()`. Added defensive handling for factor-type compliance columns.
+* **TTE Patient Mapping**: Corrected TTE event assignment loop to map patients robustly by ID key from `tapply()` instead of assuming alphabetical row indexing.
+* **MSM Fit Errors**: Reworded `tryCatch` error prefixes to prevent masking non-convergence errors.
+* **GEE Cluster Detection**: Converted `PatientID` to numeric factor in `.fit_msm_gee()` so `geepack` correctly detects cluster boundaries via `diff(as.numeric(id))` (character IDs like `"P0001"` coerced to `NA`, causing all rows to be treated as a single cluster).
+* **Tuning (mtry)**: Pre-baked recipes in `fit_ps_tidymodels()` to dynamically finalize `mtry()` parameter ranges, resolving the dials tuning unknowns error when `tune_ps = TRUE`.
+* **Extraction Robustness Check**: Added a comprehensive list of standard positive levels to `fit_ps_tidymodels()` (including `"Yes"`, `"Compliant"`, `"1"`, etc.) and warning messages if non-standard levels are target classes to prevent silent propensity score class flips.
+
+## Dependency Alignment
+
+* Formally registered `MLPScore` under `Suggests` in `DESCRIPTION` and added `Remotes: github::jkylearmstrong-temple/ML-PScore` to avoid circular dependency loops while allowing resolution during development.
+
 # pslongSim 0.3.5
 
 ## CRAN Readiness

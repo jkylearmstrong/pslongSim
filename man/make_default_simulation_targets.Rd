@@ -62,9 +62,9 @@ the full longitudinal PS simulation workflow: data generation, propensity
 score estimation, IPTW weighting, MSM fitting, and summarisation.
 }
 \examples{
-\donttest{
+\dontshow{if (requireNamespace("targets", quietly = TRUE)) withAutoprint(\{ # examplesIf}
 # Requires the 'targets' package
 targets <- make_default_simulation_targets(num_patients = 10)
 length(targets)
-}
+\dontshow{\}) # examplesIf}
 }
