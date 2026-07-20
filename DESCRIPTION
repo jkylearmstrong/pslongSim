@@ -1,7 +1,7 @@
 Package: pslongSim
 Type: Package
 Title: Longitudinal Propensity Score Simulation for Clinical Trials
-Version: 0.3.6
+Version: 0.3.7
 Authors@R: person(
     "J Kyle", "Armstrong",
     role = c("aut", "cre"),

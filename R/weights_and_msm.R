@@ -4,6 +4,10 @@
 #' marginal and conditional (propensity-score) probabilities of compliance.
 #' Optionally truncates extreme weights at specified quantiles.
 #'
+#' This is a simple \emph{baseline/reference} implementation for benchmarking
+#' simulation output; for advanced weighting with clipping diagnostics see
+#' \pkg{MLPScore}.
+#'
 #' @param df Data frame containing the compliance, propensity score, and
 #'   visit number columns.
 #' @param c_var Character: name of the binary compliance column.

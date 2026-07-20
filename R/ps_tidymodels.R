@@ -5,6 +5,11 @@
 #' binary classification), dummy-encoded, zero-variance predictors are
 #' removed, and numeric predictors are normalised.
 #'
+#' Note: the estimation functions in \pkg{pslongSim} are intentionally simple
+#' \emph{baseline/reference estimators} used to benchmark simulation output.
+#' For advanced ML propensity score estimation (cross-fitting, clipping,
+#' twang, diagnostics), use the \pkg{MLPScore} package.
+#'
 #' @param df Data frame containing the outcome and predictor columns.
 #' @param outcome Character: name of the binary outcome column.
 #' @param predictors Character vector of predictor column names.  When

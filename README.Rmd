@@ -48,6 +48,12 @@ This package has a development dependency on **MLPScore** for running the method
 devtools::install_github("jkylearmstrong-temple/ML-PScore")
 ```
 
+Dependency contract: `pslongSim` → `MLPScore` is *Suggests-only*; `MLPScore` has no dependency on `pslongSim` in any DESCRIPTION field. The graph is acyclic by construction and guarded by `tests/testthat/test-separation.R`.
+
+### Baseline Estimators
+
+`pslongSim` intentionally ships a small set of simple reference estimators (`fit_ps_tidymodels()`, `compute_stabilized_iptw()`, `fit_msm_gee_cont()`, `fit_msm_gee_bin()`, `fit_msm_cox()`) so simulation sweeps are self-contained without `MLPScore` installed. These are benchmarking baselines — for advanced estimation (cross-fitting, TWANG, AIPW, diagnostics) use `MLPScore`.
+
 ## Running the Simulation
 
 This project uses the `targets` R package for pipeline management. The

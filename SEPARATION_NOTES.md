@@ -22,3 +22,29 @@ This repository (**pslongSim**) serves as the single source of truth for simulat
   │ - PS Estimations  │    │  (Orchestration)│
   └───────────────────┘    └─────────────────┘
 ```
+
+## Baseline Estimators (Intentional Overlap)
+
+`pslongSim` deliberately retains a small set of **simple reference estimators** —
+`fit_ps_tidymodels()`, `compute_stabilized_iptw()`, `fit_msm_gee_cont()`,
+`fit_msm_gee_bin()`, and `fit_msm_cox()` — so that simulation sweeps are
+self-contained and can benchmark generated data without requiring `MLPScore`.
+These are not duplicates of `MLPScore` functionality: `compute_stabilized_iptw()`
+is a longitudinal cumulative-product IPTW, whereas `MLPScore::compute_stabilized_weights()`
+is cross-sectional with clipping diagnostics. All advanced estimation
+(cross-fitting, TWANG, AIPW, diagnostics) lives exclusively in `MLPScore`.
+
+## Dependency Direction
+
+* `pslongSim` → `MLPScore`: **Suggests only** (soft; used by `mlpscore_pipeline/`).
+* `MLPScore` → `pslongSim`: **none** (no DESCRIPTION reference in either direction that could cycle).
+* `mlpscore_pipeline/` (this repo) is the **single** orchestration point; the
+  legacy pipeline scripts in the ML-PScore repo have been moved to its
+  `analysis/` folder and are excluded from that package's build.
+
+## Migration Checklist & Status
+
+- [x] **Add comparative targets pipeline**: Created `mlpscore_pipeline/` subdirectory to contain the orchestration logic.
+- [x] **Migrate Excel simulation parameters**: Relocated `simulation_params.xlsx` to `mlpscore_pipeline/`.
+- [x] **Verification**: Ran the entire targets pipeline (`_targets_mlpscore.R` and `run_simulation.R`) successfully, rendering the comparative reports/figures in PDF.
+- [x] **Unit Testing**: Verified that 100% of the 175 tests in `pslongsim` pass with zero failures.

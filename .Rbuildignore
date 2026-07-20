@@ -21,3 +21,4 @@
 ^code_bundle\.txt$
 ^release_workflow\.R$
 ^R/notes\.qmd$
+^TODO\.md$

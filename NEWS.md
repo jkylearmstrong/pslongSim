@@ -1,3 +1,11 @@
+# pslongSim 0.3.7
+
+## Documentation & Separation Guards
+
+* **Baseline estimators documented**: `fit_ps_tidymodels()`, `compute_stabilized_iptw()`, and the `fit_msm_*()` family are now explicitly documented (roxygen + SEPARATION_NOTES) as intentional simple baseline/reference estimators for benchmarking simulation output; advanced ML estimation lives exclusively in `MLPScore`.
+* **Dependency direction documented**: SEPARATION_NOTES now states the acyclic dependency contract — `pslongSim` → `MLPScore` is Suggests-only; `MLPScore` → `pslongSim` is nonexistent.
+* **New structural test**: `test-separation.R` guards that MLPScore never becomes a hard dependency and that baseline estimators stay exported.
+
 # pslongSim 0.3.6
 
 ## Bug Fixes & Refactoring
