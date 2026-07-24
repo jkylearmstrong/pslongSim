@@ -134,3 +134,30 @@ targets::tar_read(summary_cont)
 targets::tar_read(summary_bin)
 targets::tar_read(summary_cox)
 ```
+
+## Development
+
+`pslongSim` is developed **independently** of `MLPScore` — each repo
+releases on its own cadence and neither requires lockstep changes in the
+other.
+
+Ground rules for contributors:
+
+1.  **`MLPScore` may only ever be a `Suggests` dependency** (enforced by
+    `tests/testthat/test-separation.R`). Core simulation and the
+    baseline estimators must work with `MLPScore` absent.
+2.  **This package owns the data-generating process.** New signal types
+    (non-linearities, time-varying confounding, interactions) are added
+    here; *detection* of that signal is MLPScore’s job. Do not add
+    advanced estimation methods here — the exported estimators are
+    intentionally simple baselines.
+3.  **New DGP features** should: (a) be off by default
+    (backward-compatible), (b) emit named columns (`NL_*` convention) so
+    downstream `var_map`s can reference them, (c) come with invariant
+    tests, and (d) get a scenario knob in
+    `mlpscore_pipeline/_targets_mlpscore.R` if they should appear in the
+    methods comparison.
+4.  **Release process**: `Rscript release_workflow.R` prints the 10-step
+    checklist.
+5.  **Backlog** (including Dr. Zhao’s feature requests with design
+    notes): see [TODO.md](TODO.md).
