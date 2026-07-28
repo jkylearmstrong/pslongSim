@@ -9,14 +9,15 @@ build_nl_columns(df, nonlin_coefs)
 \arguments{
 \item{df}{Data frame containing the predictor variables.}
 
-\item{nonlin_coefs}{Named numeric vector; names must be \code{"VarA:VarB"}.}
+\item{nonlin_coefs}{Named numeric vector of interaction coefficients.}
 }
 \value{
 \code{df} with additional \code{NL_*} columns (invisibly).
 }
 \description{
-Parses \code{nonlin_coefs} names in \code{"VarA:VarB"} form, validates
-that both variables exist in \code{df}, and creates product columns named
-\code{NL_<VarA>_<VarB}.
+Parses \code{nonlin_coefs} names in \code{"VarA:VarB"} form, 3-way interactions
+(\code{"A:B:C"}), step functions (\code{"step(Age, 65):SideEffect"}), quadratics
+(\code{"I(Age^2)"}), or logic regions (\code{"xor(SideEffect, Compliant)"}), and
+creates product columns named \code{NL_*}.
 }
 \keyword{internal}

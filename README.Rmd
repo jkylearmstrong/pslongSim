@@ -86,35 +86,44 @@ You can modify the simulation parameters by editing the
   [0,1] adherence or `"binary"` for 0/1 compliance.  Beta adherence
   produces more realistic dose-response patterns.
 
-## Non-Linear Feature
+## Non-Linear & Longitudinal Confounding Features
 
-When `non_linear_feature = TRUE`, interaction terms (e.g.,
-`Age * SideEffect`) are added to the outcome with no additive main
-effects.  Linear models cannot detect this signal, while tree-based
-models (random forest, XGBoost) capture it naturally:
+### Outcome and Adherence Non-Linearities
 
-```{r eval=FALSE}
+When `non_linear_feature = TRUE`, interaction terms (e.g., `Age * SideEffect`) are added to the outcome linear predictor. Similarly, non-linear terms can be injected into the adherence model linear predictor using `nonlin_coefs_adherence`:
+
+```r
 library(pslongSim)
 demo <- generate_patient_data_demographic(num_patients = 1000, seed = 1)
 trt_map <- suppressWarnings(define_treatment_map(levels(demo$Treatment)))
+
 dat <- generate_longitudinal_data(
   demo, num_visits = 6, trt_map = trt_map,
   adherence_type = "beta", outcome_type = "continuous",
   non_linear_feature = TRUE,
-  nonlin_coefs = c("Age:SideEffect" = 0.20)
+  nonlin_coefs = c("Age:SideEffect" = 0.20),
+  nonlin_coefs_adherence = c("step(Age, 65):SideEffect" = 0.25)
 )
-
-lm_fit <- lm(Outcome ~ Treatment + VisitNumber + Age + SideEffect, data = dat)
-rf_fit <- randomForest::randomForest(Outcome ~ Treatment + VisitNumber + Age + SideEffect, data = dat)
-
-summary(lm_fit)$r.squared   # low
-1 - rf_fit$mse[200] / var(dat$Outcome)  # substantially higher
 ```
 
-Multiple interactions can be specified via `nonlin_coefs`:
+### Basis-Breaking Non-Linear Forms
+
+`pslongSim` supports flexible non-linear terms that are tree-friendly but linear-hostile:
+- **Multi-way interactions**: `Age:SideEffect:Biomarker`
+- **Step thresholds**: `step(Age, 65):SideEffect`
+- **Quadratics / U-shapes**: `I(Age^2)`
+- **Logic regions**: `xor(SideEffect, Compliant)`
+
+### Treatment-Confounder Feedback
+
+To model longitudinal confounding where past treatment compliance influences future time-varying covariates, set `comp_feedback` in `se_model` or `biom_model`:
 
 ```r
-nonlin_coefs = c("Age:SideEffect" = 0.15, "Biomarker:Age" = 0.10)
+dat <- generate_longitudinal_data(
+  demo, num_visits = 6, trt_map = trt_map,
+  se_model = list(intercept = -1.2, lag_se = 1.0, comp_feedback = 0.4),
+  biom_model = list(intercept = 0, phi = 0.75, comp_feedback = 0.5)
+)
 ```
 
 See `vignette("getting-started")` for a full walkthrough.

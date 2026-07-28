@@ -37,6 +37,11 @@ Calculates stabilised inverse probability of treatment weights using
 marginal and conditional (propensity-score) probabilities of compliance.
 Optionally truncates extreme weights at specified quantiles.
 }
+\details{
+This is a simple \emph{baseline/reference} implementation for benchmarking
+simulation output; for advanced weighting with clipping diagnostics see
+\pkg{MLPScore}.
+}
 \examples{
 demo <- generate_patient_data_demographic(num_patients = 50, seed = 1)
 trt_map <- suppressWarnings(define_treatment_map(levels(demo$Treatment)))

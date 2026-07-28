@@ -626,6 +626,19 @@ It is specified in <code>Suggests</code> and will be resolved if you
 install with development tools:</p>
 <div class="sourceCode" id="cb2"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb2-1"><a href="#cb2-1" tabindex="-1"></a><span class="co"># Install MLPScore from GitHub first</span></span>
 <span id="cb2-2"><a href="#cb2-2" tabindex="-1"></a>devtools<span class="sc">::</span><span class="fu">install_github</span>(<span class="st">&quot;jkylearmstrong-temple/ML-PScore&quot;</span>)</span></code></pre></div>
+<p>Dependency contract: <code>pslongSim</code> → <code>MLPScore</code>
+is <em>Suggests-only</em>; <code>MLPScore</code> has no dependency on
+<code>pslongSim</code> in any DESCRIPTION field. The graph is acyclic by
+construction and guarded by
+<code>tests/testthat/test-separation.R</code>.</p>
+<h3 id="baseline-estimators">Baseline Estimators</h3>
+<p><code>pslongSim</code> intentionally ships a small set of simple
+reference estimators (<code>fit_ps_tidymodels()</code>,
+<code>compute_stabilized_iptw()</code>, <code>fit_msm_gee_cont()</code>,
+<code>fit_msm_gee_bin()</code>, <code>fit_msm_cox()</code>) so
+simulation sweeps are self-contained without <code>MLPScore</code>
+installed. These are benchmarking baselines — for advanced estimation
+(cross-fitting, TWANG, AIPW, diagnostics) use <code>MLPScore</code>.</p>
 <h2 id="running-the-simulation">Running the Simulation</h2>
 <p>This project uses the <code>targets</code> R package for pipeline
 management. The default pipeline lives in the package. To run the full
@@ -657,29 +670,46 @@ XGBoost.</li>
 <code>&quot;binary&quot;</code> for 0/1 compliance. Beta adherence produces more
 realistic dose-response patterns.</li>
 </ul>
-<h2 id="non-linear-feature">Non-Linear Feature</h2>
+<h2 id="non-linear--longitudinal-confounding-features">Non-Linear &amp;
+Longitudinal Confounding Features</h2>
+<h3 id="outcome-and-adherence-non-linearities">Outcome and Adherence
+Non-Linearities</h3>
 <p>When <code>non_linear_feature = TRUE</code>, interaction terms (e.g.,
-<code>Age * SideEffect</code>) are added to the outcome with no additive
-main effects. Linear models cannot detect this signal, while tree-based
-models (random forest, XGBoost) capture it naturally:</p>
+<code>Age * SideEffect</code>) are added to the outcome linear
+predictor. Similarly, non-linear terms can be injected into the
+adherence model linear predictor using
+<code>nonlin_coefs_adherence</code>:</p>
 <div class="sourceCode" id="cb4"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb4-1"><a href="#cb4-1" tabindex="-1"></a><span class="fu">library</span>(pslongSim)</span>
 <span id="cb4-2"><a href="#cb4-2" tabindex="-1"></a>demo <span class="ot">&lt;-</span> <span class="fu">generate_patient_data_demographic</span>(<span class="at">num_patients =</span> <span class="dv">1000</span>, <span class="at">seed =</span> <span class="dv">1</span>)</span>
 <span id="cb4-3"><a href="#cb4-3" tabindex="-1"></a>trt_map <span class="ot">&lt;-</span> <span class="fu">suppressWarnings</span>(<span class="fu">define_treatment_map</span>(<span class="fu">levels</span>(demo<span class="sc">$</span>Treatment)))</span>
-<span id="cb4-4"><a href="#cb4-4" tabindex="-1"></a>dat <span class="ot">&lt;-</span> <span class="fu">generate_longitudinal_data</span>(</span>
-<span id="cb4-5"><a href="#cb4-5" tabindex="-1"></a>  demo, <span class="at">num_visits =</span> <span class="dv">6</span>, <span class="at">trt_map =</span> trt_map,</span>
-<span id="cb4-6"><a href="#cb4-6" tabindex="-1"></a>  <span class="at">adherence_type =</span> <span class="st">&quot;beta&quot;</span>, <span class="at">outcome_type =</span> <span class="st">&quot;continuous&quot;</span>,</span>
-<span id="cb4-7"><a href="#cb4-7" tabindex="-1"></a>  <span class="at">non_linear_feature =</span> <span class="cn">TRUE</span>,</span>
-<span id="cb4-8"><a href="#cb4-8" tabindex="-1"></a>  <span class="at">nonlin_coefs =</span> <span class="fu">c</span>(<span class="st">&quot;Age:SideEffect&quot;</span> <span class="ot">=</span> <span class="fl">0.20</span>)</span>
-<span id="cb4-9"><a href="#cb4-9" tabindex="-1"></a>)</span>
-<span id="cb4-10"><a href="#cb4-10" tabindex="-1"></a></span>
-<span id="cb4-11"><a href="#cb4-11" tabindex="-1"></a>lm_fit <span class="ot">&lt;-</span> <span class="fu">lm</span>(Outcome <span class="sc">~</span> Treatment <span class="sc">+</span> VisitNumber <span class="sc">+</span> Age <span class="sc">+</span> SideEffect, <span class="at">data =</span> dat)</span>
-<span id="cb4-12"><a href="#cb4-12" tabindex="-1"></a>rf_fit <span class="ot">&lt;-</span> randomForest<span class="sc">::</span><span class="fu">randomForest</span>(Outcome <span class="sc">~</span> Treatment <span class="sc">+</span> VisitNumber <span class="sc">+</span> Age <span class="sc">+</span> SideEffect, <span class="at">data =</span> dat)</span>
-<span id="cb4-13"><a href="#cb4-13" tabindex="-1"></a></span>
-<span id="cb4-14"><a href="#cb4-14" tabindex="-1"></a><span class="fu">summary</span>(lm_fit)<span class="sc">$</span>r.squared   <span class="co"># low</span></span>
-<span id="cb4-15"><a href="#cb4-15" tabindex="-1"></a><span class="dv">1</span> <span class="sc">-</span> rf_fit<span class="sc">$</span>mse[<span class="dv">200</span>] <span class="sc">/</span> <span class="fu">var</span>(dat<span class="sc">$</span>Outcome)  <span class="co"># substantially higher</span></span></code></pre></div>
-<p>Multiple interactions can be specified via
-<code>nonlin_coefs</code>:</p>
-<div class="sourceCode" id="cb5"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb5-1"><a href="#cb5-1" tabindex="-1"></a>nonlin_coefs <span class="ot">=</span> <span class="fu">c</span>(<span class="st">&quot;Age:SideEffect&quot;</span> <span class="ot">=</span> <span class="fl">0.15</span>, <span class="st">&quot;Biomarker:Age&quot;</span> <span class="ot">=</span> <span class="fl">0.10</span>)</span></code></pre></div>
+<span id="cb4-4"><a href="#cb4-4" tabindex="-1"></a></span>
+<span id="cb4-5"><a href="#cb4-5" tabindex="-1"></a>dat <span class="ot">&lt;-</span> <span class="fu">generate_longitudinal_data</span>(</span>
+<span id="cb4-6"><a href="#cb4-6" tabindex="-1"></a>  demo, <span class="at">num_visits =</span> <span class="dv">6</span>, <span class="at">trt_map =</span> trt_map,</span>
+<span id="cb4-7"><a href="#cb4-7" tabindex="-1"></a>  <span class="at">adherence_type =</span> <span class="st">&quot;beta&quot;</span>, <span class="at">outcome_type =</span> <span class="st">&quot;continuous&quot;</span>,</span>
+<span id="cb4-8"><a href="#cb4-8" tabindex="-1"></a>  <span class="at">non_linear_feature =</span> <span class="cn">TRUE</span>,</span>
+<span id="cb4-9"><a href="#cb4-9" tabindex="-1"></a>  <span class="at">nonlin_coefs =</span> <span class="fu">c</span>(<span class="st">&quot;Age:SideEffect&quot;</span> <span class="ot">=</span> <span class="fl">0.20</span>),</span>
+<span id="cb4-10"><a href="#cb4-10" tabindex="-1"></a>  <span class="at">nonlin_coefs_adherence =</span> <span class="fu">c</span>(<span class="st">&quot;step(Age, 65):SideEffect&quot;</span> <span class="ot">=</span> <span class="fl">0.25</span>)</span>
+<span id="cb4-11"><a href="#cb4-11" tabindex="-1"></a>)</span></code></pre></div>
+<h3 id="basis-breaking-non-linear-forms">Basis-Breaking Non-Linear
+Forms</h3>
+<p><code>pslongSim</code> supports flexible non-linear terms that are
+tree-friendly but linear-hostile: - <strong>Multi-way
+interactions</strong>: <code>Age:SideEffect:Biomarker</code> -
+<strong>Step thresholds</strong>: <code>step(Age, 65):SideEffect</code>
+- <strong>Quadratics / U-shapes</strong>: <code>I(Age^2)</code> -
+<strong>Logic regions</strong>:
+<code>xor(SideEffect, Compliant)</code></p>
+<h3 id="treatment-confounder-feedback">Treatment-Confounder
+Feedback</h3>
+<p>To model longitudinal confounding where past treatment compliance
+influences future time-varying covariates, set
+<code>comp_feedback</code> in <code>se_model</code> or
+<code>biom_model</code>:</p>
+<div class="sourceCode" id="cb5"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb5-1"><a href="#cb5-1" tabindex="-1"></a>dat <span class="ot">&lt;-</span> <span class="fu">generate_longitudinal_data</span>(</span>
+<span id="cb5-2"><a href="#cb5-2" tabindex="-1"></a>  demo, <span class="at">num_visits =</span> <span class="dv">6</span>, <span class="at">trt_map =</span> trt_map,</span>
+<span id="cb5-3"><a href="#cb5-3" tabindex="-1"></a>  <span class="at">se_model =</span> <span class="fu">list</span>(<span class="at">intercept =</span> <span class="sc">-</span><span class="fl">1.2</span>, <span class="at">lag_se =</span> <span class="fl">1.0</span>, <span class="at">comp_feedback =</span> <span class="fl">0.4</span>),</span>
+<span id="cb5-4"><a href="#cb5-4" tabindex="-1"></a>  <span class="at">biom_model =</span> <span class="fu">list</span>(<span class="at">intercept =</span> <span class="dv">0</span>, <span class="at">phi =</span> <span class="fl">0.75</span>, <span class="at">comp_feedback =</span> <span class="fl">0.5</span>)</span>
+<span id="cb5-5"><a href="#cb5-5" tabindex="-1"></a>)</span></code></pre></div>
 <p>See <code>vignette(&quot;getting-started&quot;)</code> for a full
 walkthrough.</p>
 <h2 id="r-package-structure">R Package Structure</h2>
@@ -696,6 +726,33 @@ with:</p>
 <div class="sourceCode" id="cb6"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb6-1"><a href="#cb6-1" tabindex="-1"></a>targets<span class="sc">::</span><span class="fu">tar_read</span>(summary_cont)</span>
 <span id="cb6-2"><a href="#cb6-2" tabindex="-1"></a>targets<span class="sc">::</span><span class="fu">tar_read</span>(summary_bin)</span>
 <span id="cb6-3"><a href="#cb6-3" tabindex="-1"></a>targets<span class="sc">::</span><span class="fu">tar_read</span>(summary_cox)</span></code></pre></div>
+<h2 id="development">Development</h2>
+<p><code>pslongSim</code> is developed <strong>independently</strong> of
+<code>MLPScore</code> — each repo releases on its own cadence and
+neither requires lockstep changes in the other.</p>
+<p>Ground rules for contributors:</p>
+<ol style="list-style-type: decimal">
+<li><strong><code>MLPScore</code> may only ever be a
+<code>Suggests</code> dependency</strong> (enforced by
+<code>tests/testthat/test-separation.R</code>). Core simulation and the
+baseline estimators must work with <code>MLPScore</code> absent.</li>
+<li><strong>This package owns the data-generating process.</strong> New
+signal types (non-linearities, time-varying confounding, interactions)
+are added here; <em>detection</em> of that signal is MLPScore’s job. Do
+not add advanced estimation methods here — the exported estimators are
+intentionally simple baselines.</li>
+<li><strong>New DGP features</strong> should: (a) be off by default
+(backward-compatible), (b) emit named columns (<code>NL_*</code>
+convention) so downstream <code>var_map</code>s can reference them, (c)
+come with invariant tests, and (d) get a scenario knob in
+<code>mlpscore_pipeline/_targets_mlpscore.R</code> if they should appear
+in the methods comparison.</li>
+<li><strong>Release process</strong>:
+<code>Rscript release_workflow.R</code> prints the 10-step
+checklist.</li>
+<li><strong>Backlog</strong> (including Dr. Zhao’s feature requests with
+design notes): see <a href="TODO.md">TODO.md</a>.</li>
+</ol>
 
 </body>
 </html>

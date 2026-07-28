@@ -178,3 +178,57 @@ test_that("TTE first-event censoring works correctly", {
     }
   }
 })
+
+test_that("property-based invariants hold (monotone visits, adherence bounds, positive IPTW weights)", {
+  set.seed(999)
+  n <- 50
+  num_vis <- 6
+  demo <- generate_patient_data_demographic(num_patients = n, n_cohorts = 3)
+  trt_map <- suppressWarnings(define_treatment_map(levels(demo$Treatment)))
+
+  # Check both binary and beta adherence
+  for (adh_type in c("binary", "beta")) {
+    dat <- generate_longitudinal_data(
+      demo, num_visits = num_vis, trt_map = trt_map,
+      adherence_type = adh_type, outcome_type = "continuous"
+    )
+
+    # 1. Monotone visit numbers (1, 2, ..., num_visits) for all patients
+    vis_check <- tapply(dat$VisitNumber, dat$PatientID, function(v) identical(as.integer(v), seq_len(num_vis)))
+    expect_true(all(vis_check))
+
+    # 2. Adherence bounded in [0, 1]
+    expect_true(all(dat$Adherence >= 0 & dat$Adherence <= 1))
+
+    # 3. Stabilized IPTW weights are positive and finite
+    ps_fit <- fit_ps_tidymodels(dat, model = "glm")
+    dat$ps_hat <- ps_fit$ps_hat
+    w_df <- compute_stabilized_iptw(dat)
+    expect_true(all(w_df$w > 0 & is.finite(w_df$w)))
+  }
+})
+
+test_that("treatment-confounder feedback shifts future covariates", {
+  set.seed(42)
+  demo <- generate_patient_data_demographic(num_patients = 100, n_cohorts = 3)
+  trt_map <- suppressWarnings(define_treatment_map(levels(demo$Treatment)))
+
+  # Baseline without feedback
+  dat_nofb <- generate_longitudinal_data(
+    demo, num_visits = 5, trt_map = trt_map, seed = 42,
+    se_model = list(intercept = -1.2, age = 0, male = 0.05, time_trend = 0.05, lag_se = 1.0, sd_subject = 0.6, comp_feedback = 0.0),
+    biom_model = list(intercept = 0, phi = 0.75, sd_innov = 0.5, sd_b0 = 0.75, comp_feedback = 0.0)
+  )
+
+  # With strong positive feedback on biomarker and side-effects from compliance
+  dat_fb <- generate_longitudinal_data(
+    demo, num_visits = 5, trt_map = trt_map, seed = 42,
+    se_model = list(intercept = -1.2, age = 0, male = 0.05, time_trend = 0.05, lag_se = 1.0, sd_subject = 0.6, comp_feedback = 1.5),
+    biom_model = list(intercept = 0, phi = 0.75, sd_innov = 0.5, sd_b0 = 0.75, comp_feedback = 2.0)
+  )
+
+  # Biomarker and Side-effect trajectories should differ due to feedback
+  expect_false(identical(dat_nofb$Biomarker, dat_fb$Biomarker))
+  expect_false(identical(dat_nofb$SideEffect, dat_fb$SideEffect))
+})
+

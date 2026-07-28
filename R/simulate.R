@@ -81,11 +81,15 @@ generate_patient_data_demographic <- function(
 #'   to the outcome as specified by \code{nonlin_coefs}.  Default
 #'   \code{FALSE} for backward compatibility.
 #' @param nonlin_coefs Named numeric vector of interaction coefficients.
-#'   Names must be in the form \code{"VarA:VarB"} (e.g.,
-#'   \code{c("Age:SideEffect" = 0.15)}).  Only used when
+#'   Names can be in \code{"VarA:VarB"} form, 3-way interactions (\code{"A:B:C"}),
+#'   step thresholds (\code{"step(Age, 65):SideEffect"}), quadratics (\code{"I(Age^2)"}),
+#'   or logic regions (\code{"xor(SideEffect, Compliant)"}). Only used when
 #'   \code{non_linear_feature = TRUE}.
+#' @param nonlin_coefs_adherence Named numeric vector of non-linear terms injected
+#'   into the adherence model linear predictor (\code{lp_adh}). Defaults to \code{NULL}.
 #' @param tte_model List for the TTE hazard model.
-#' @param biom_model List for the AR(1) biomarker parameters.
+#' @param biom_model List for the AR(1) biomarker parameters, including optional
+#'   \code{comp_feedback} coefficient for past treatment compliance.
 #' @param rho_uv Correlation between outcome and adherence subject effects.
 #' @param rho_uw Correlation between outcome and side-effect subject effects.
 #' @param rho_vw Correlation between adherence and side-effect subject effects.
@@ -111,12 +115,13 @@ generate_longitudinal_data <- function(
     trt_map,
     # Side-effects model
     se_model = list(
-      intercept  = -1.2,
-      age        =  0.00,
-      male       =  0.05,
-      time_trend =  0.05,
-      lag_se     =  1.00,
-      sd_subject =  0.6
+      intercept     = -1.2,
+      age           =  0.00,
+      male          =  0.05,
+      time_trend    =  0.05,
+      lag_se        =  1.00,
+      sd_subject    =  0.6,
+      comp_feedback =  0.00
     ),
     # Adherence model
     adherence_type = c("binary", "beta"),
@@ -146,6 +151,7 @@ generate_longitudinal_data <- function(
     # Non-linear feature toggle
     non_linear_feature = FALSE,
     nonlin_coefs = c("Age:SideEffect" = 0.15),
+    nonlin_coefs_adherence = NULL,
     # TTE hazard (discrete-time)
     tte_model = list(
       baseline_logit_h = -3.2,
@@ -157,10 +163,11 @@ generate_longitudinal_data <- function(
     ),
     # AR(1) biomarker
     biom_model = list(
-      intercept = 0.0,
-      phi       = 0.75,
-      sd_innov  = 0.5,
-      sd_b0     = 0.75
+      intercept     = 0.0,
+      phi           = 0.75,
+      sd_innov      = 0.5,
+      sd_b0         = 0.75,
+      comp_feedback = 0.00
     ),
     # RE correlations
     rho_uv = 0.4,
@@ -276,7 +283,25 @@ generate_longitudinal_data <- function(
   # Helper index
   idx_fun <- function(j, t) (j - 1L) * T_vis + t
 
+  # Pre-parse adherence non-linear interaction terms if provided
+  parsed_adh_terms <- list()
+  if (!is.null(nonlin_coefs_adherence) && length(nonlin_coefs_adherence) > 0L) {
+    nm_adh <- names(nonlin_coefs_adherence)
+    for (i in seq_along(nonlin_coefs_adherence)) {
+      t_str <- nm_adh[i]
+      expr_text <- gsub(":", " * ", t_str, fixed = TRUE)
+      parsed_adh_terms[[i]] <- list(
+        expr = tryCatch(parse(text = expr_text), error = function(e) NULL),
+        coef = nonlin_coefs_adherence[[i]],
+        col_name = sanitize_nl_col_name(t_str)
+      )
+    }
+  }
+
   # Generate AR(1) biomarker and lagged processes
+  fb_biom <- if (!is.null(biom_model$comp_feedback)) biom_model$comp_feedback else 0.0
+  fb_se   <- if (!is.null(se_model$comp_feedback)) se_model$comp_feedback else 0.0
+
   for (j in seq_len(n)) {
     prev_se   <- 0L
     prev_comp <- 0L
@@ -287,23 +312,49 @@ generate_longitudinal_data <- function(
     for (t in seq_len(T_vis)) {
       idx <- idx_fun(j, t)
 
-      # AR(1) biomarker
+      # AR(1) biomarker (with optional treatment-confounder feedback)
       b_t <- biom_model$intercept +
         biom_model$phi * (b_prev - biom_model$intercept) +
+        fb_biom * prev_comp +
         rnorm(1, 0, biom_model$sd_innov)
       Biom[idx] <- b_t
       b_prev <- b_t
 
-      # Side-effect
-      lp_se <- lp_se_base[idx] + se_model$lag_se * prev_se
+      # Side-effect (with optional treatment-confounder feedback)
+      lp_se <- lp_se_base[idx] + se_model$lag_se * prev_se + fb_se * prev_comp
       p_se  <- inv_logit(lp_se)
       se_t  <- rbinom(1L, 1L, clamp(p_se, 1e-6, 1 - 1e-6))
 
-      # Adherence
+      # Adherence linear predictor
       lp_adh <- lp_adh_base[idx] +
         adherence_model$lag_comp * prev_comp +
         adherence_model$se_effect * se_t +
         adherence_model$biomarker_effect * b_t
+
+      if (length(parsed_adh_terms) > 0L) {
+        row_env <- list2env(
+          list(
+            Age         = age[idx],
+            GenderMale  = male[idx],
+            VisitNumber = visit[idx],
+            SideEffect  = se_t,
+            Biomarker   = b_t,
+            Compliant   = prev_comp,
+            Adherence   = prev_comp,
+            Treatment   = trt[idx],
+            step        = function(x, cut) as.numeric(x > cut),
+            xor         = function(x, y) as.numeric(as.logical(x) != as.logical(y))
+          ),
+          parent = parent.frame()
+        )
+        for (item in parsed_adh_terms) {
+          if (!is.null(item$expr)) {
+            v_val <- tryCatch(eval(item$expr, envir = row_env), error = function(e) 0)
+            lp_adh <- lp_adh + item$coef * v_val
+          }
+        }
+      }
+
       p_adh <- inv_logit(lp_adh)
 
       if (adherence_type == "binary") {
@@ -341,10 +392,11 @@ generate_longitudinal_data <- function(
   )
 
   # Non-linear interaction features
-  # Interactions are included ONLY as products; no additive main effects.
-  # Linear models cannot detect these signals; tree-based models can.
   if (non_linear_feature) {
     out_df <- build_nl_columns(out_df, nonlin_coefs)
+  }
+  if (!is.null(nonlin_coefs_adherence) && length(nonlin_coefs_adherence) > 0L) {
+    out_df <- build_nl_columns(out_df, nonlin_coefs_adherence)
   }
 
   # -- Outcome generation -----------------------------------------------------
@@ -466,12 +518,13 @@ generate_longitudinal_data <- function(
 
 #' Build non-linear interaction columns
 #'
-#' Parses \code{nonlin_coefs} names in \code{"VarA:VarB"} form, validates
-#' that both variables exist in \code{df}, and creates product columns named
-#' \code{NL_<VarA>_<VarB}.
+#' Parses \code{nonlin_coefs} names in \code{"VarA:VarB"} form, 3-way interactions
+#' (\code{"A:B:C"}), step functions (\code{"step(Age, 65):SideEffect"}), quadratics
+#' (\code{"I(Age^2)"}), or logic regions (\code{"xor(SideEffect, Compliant)"}), and
+#' creates product columns named \code{NL_*}.
 #'
 #' @param df Data frame containing the predictor variables.
-#' @param nonlin_coefs Named numeric vector; names must be \code{"VarA:VarB"}.
+#' @param nonlin_coefs Named numeric vector of interaction coefficients.
 #' @return \code{df} with additional \code{NL_*} columns (invisibly).
 #' @keywords internal
 build_nl_columns <- function(df, nonlin_coefs) {
@@ -479,20 +532,18 @@ build_nl_columns <- function(df, nonlin_coefs) {
   nm_names <- names(nonlin_coefs)
   for (i in seq_along(nonlin_coefs)) {
     nm <- nm_names[i]
-    parts <- strsplit(nm, ":", fixed = TRUE)[[1L]]
-    if (length(parts) != 2L) {
+    col_name <- sanitize_nl_col_name(nm)
+
+    if (!grepl(":", nm, fixed = TRUE) && !grepl("[()^]", nm)) {
       warning("nonlin_coefs: '", nm, "' does not follow 'VarA:VarB' format, skipping.")
       next
     }
-    if (!all(parts %in% names(df))) {
-      missing <- setdiff(parts, names(df))
-      warning("nonlin_coefs: variable(s) ", paste(missing, collapse = ", "),
-              " not in data, skipping '", nm, "'.")
-      next
-    }
-    col_name <- paste0("NL_", parts[1L], "_", parts[2L])
+
+    val <- parse_eval_nl_term(nm, df)
+    if (is.null(val)) next
+
     if (!col_name %in% names(df)) {
-      df[[col_name]] <- df[[parts[1L]]] * df[[parts[2L]]]
+      df[[col_name]] <- val
     }
   }
   df
@@ -501,11 +552,11 @@ build_nl_columns <- function(df, nonlin_coefs) {
 #' Add non-linear terms to a linear predictor vector
 #'
 #' For each entry in \code{nonlin_coefs}, looks up the corresponding
-#' \code{NL_<VarA>_<VarB>} column in \code{df} and adds the weighted
-#' interaction to \code{lp}.
+#' \code{NL_*} column in \code{df} (or evaluates the term directly) and
+#' adds the weighted interaction to \code{lp}.
 #'
 #' @param lp Numeric vector (linear predictor, modified in place).
-#' @param df Data frame containing the \code{NL_*} columns.
+#' @param df Data frame containing the \code{NL_*} columns or predictor features.
 #' @param nonlin_coefs Named numeric vector of interaction coefficients.
 #' @return Updated linear predictor \code{lp}.
 #' @keywords internal
@@ -514,12 +565,9 @@ add_nl_to_lp <- function(lp, df, nonlin_coefs) {
   nm_names <- names(nonlin_coefs)
   for (i in seq_along(nonlin_coefs)) {
     nm <- nm_names[i]
-    parts <- strsplit(nm, ":", fixed = TRUE)[[1L]]
-    if (length(parts) == 2L) {
-      col_name <- paste0("NL_", parts[1L], "_", parts[2L])
-      if (col_name %in% names(df)) {
-        lp <- lp + nonlin_coefs[[i]] * df[[col_name]]
-      }
+    col_name <- sanitize_nl_col_name(nm)
+    if (col_name %in% names(df)) {
+      lp <- lp + nonlin_coefs[[i]] * df[[col_name]]
     }
   }
   lp

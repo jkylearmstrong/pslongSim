@@ -25,6 +25,12 @@ estimation.  The outcome column is converted to a factor (required for
 binary classification), dummy-encoded, zero-variance predictors are
 removed, and numeric predictors are normalised.
 }
+\details{
+Note: the estimation functions in \pkg{pslongSim} are intentionally simple
+\emph{baseline/reference estimators} used to benchmark simulation output.
+For advanced ML propensity score estimation (cross-fitting, clipping,
+twang, diagnostics), use the \pkg{MLPScore} package.
+}
 \examples{
 demo <- generate_patient_data_demographic(num_patients = 50, seed = 1)
 trt_map <- suppressWarnings(define_treatment_map(levels(demo$Treatment)))

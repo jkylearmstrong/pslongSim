@@ -5,6 +5,15 @@ library(purrr)
 library(ggplot2)
 library(magrittr)
 
+# Check for MLPScore package availability
+if (!requireNamespace("MLPScore", quietly = TRUE)) {
+  message("--------------------------------------------------------------------------------")
+  message("NOTE: 'MLPScore' package is not installed.")
+  message("The target workflow in mlpscore_pipeline/ requires MLPScore for estimation.")
+  message("Install it via: remotes::install_github('jkylearmstrong-temple/ML-PScore')")
+  message("--------------------------------------------------------------------------------")
+}
+
 # Propagate active parameter column from environment variable to background workers
 val_col_env <- Sys.getenv("MLPSCORE_VALUE_COL", unset = "")
 if (val_col_env != "") {
@@ -84,6 +93,7 @@ scenario_map <- tar_map(
             
             out_type <- if (!is.null(p$outcome_type)) tolower(trimws(p$outcome_type)) else "continuous"
             ad_type <- if (!is.null(p$adherence_type)) tolower(trimws(p$adherence_type)) else "beta"
+            if (ad_type == "binomial") ad_type <- "binary"
             
             pslongSim::generate_longitudinal_data(
                 patient_data   = demo,

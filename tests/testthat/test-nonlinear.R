@@ -136,3 +136,63 @@ test_that("nonlin_coefs warnings on malformed entries", {
     "not in data"
   )
 })
+
+test_that("basis-breaking non-linear forms (3-way, step, quadratic, xor) work correctly", {
+  set.seed(42)
+  demo <- generate_patient_data_demographic(num_patients = 100, n_cohorts = 3)
+  trt_map <- suppressWarnings(define_treatment_map(levels(demo$Treatment)))
+
+  nl_terms <- c(
+    "Age:SideEffect:Biomarker"   = 0.10,
+    "step(Age, 65):SideEffect"   = 0.25,
+    "I(Age^2)"                   = 0.05,
+    "xor(SideEffect, Compliant)" = 0.30
+  )
+
+  dat <- generate_longitudinal_data(
+    demo, num_visits = 4, trt_map = trt_map,
+    adherence_type = "binary", outcome_type = "continuous",
+    non_linear_feature = TRUE,
+    nonlin_coefs = nl_terms
+  )
+
+  # Check 3-way interaction column
+  expect_true("NL_Age_SideEffect_Biomarker" %in% names(dat))
+  expect_equal(dat$NL_Age_SideEffect_Biomarker, dat$Age * dat$SideEffect * dat$Biomarker)
+
+  # Check step threshold column
+  expect_true("NL_step_Age_65_SideEffect" %in% names(dat))
+  expect_equal(dat$NL_step_Age_65_SideEffect, as.numeric(dat$Age > 65) * dat$SideEffect)
+
+  # Check quadratic column
+  expect_true("NL_I_Age_2" %in% names(dat))
+  expect_equal(dat$NL_I_Age_2, dat$Age^2)
+
+  # Check xor logic column
+  expect_true("NL_xor_SideEffect_Compliant" %in% names(dat))
+  expect_equal(dat$NL_xor_SideEffect_Compliant, as.numeric(as.logical(dat$SideEffect) != as.logical(dat$Compliant)))
+})
+
+test_that("nonlin_coefs_adherence injects non-linear terms into adherence model", {
+  set.seed(123)
+  demo <- generate_patient_data_demographic(num_patients = 100, n_cohorts = 3)
+  trt_map <- suppressWarnings(define_treatment_map(levels(demo$Treatment)))
+
+  # Baseline without adherence non-linearity
+  dat_base <- generate_longitudinal_data(
+    demo, num_visits = 4, trt_map = trt_map, seed = 123,
+    adherence_type = "beta", outcome_type = "continuous"
+  )
+
+  # With adherence non-linearity
+  dat_nl_adh <- generate_longitudinal_data(
+    demo, num_visits = 4, trt_map = trt_map, seed = 123,
+    adherence_type = "beta", outcome_type = "continuous",
+    nonlin_coefs_adherence = c("Age:SideEffect" = 0.5)
+  )
+
+  # Adherence column should exist and have NL column present
+  expect_true("NL_Age_SideEffect" %in% names(dat_nl_adh))
+  expect_false(identical(dat_base$Adherence, dat_nl_adh$Adherence))
+})
+

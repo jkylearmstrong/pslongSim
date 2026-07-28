@@ -1,3 +1,13 @@
+# pslongSim 0.3.8
+
+## New DGP Features & Hygiene
+
+* **Adherence Non-Linearity**: Added `nonlin_coefs_adherence` parameter to `generate_longitudinal_data()` to inject non-linear propensity score interaction terms into `lp_adh`.
+* **Basis-Breaking Non-Linear Forms**: Extended non-linear term evaluation to support 3-way interactions (`"A:B:C"`), step thresholds (`"step(Age, 65):SideEffect"`), quadratic terms (`"I(Age^2)"`), and logic/region effects (`"xor(SideEffect, Compliant)"`).
+* **Treatment-Confounder Feedback**: Added `se_model$comp_feedback` and `biom_model$comp_feedback` coefficients to simulate longitudinal confounding where past treatment adherence shifts future side-effects and AR(1) biomarker levels.
+* **Property-Based Invariants**: Added property-based unit tests enforcing monotonic visit indices, adherence parameter bounds `[0, 1]`, and non-negative IPTW weight values.
+* **Git Hygiene & Pipeline Safety**: Created `.gitattributes` to normalize text line endings across systems, and added an startup check in `mlpscore_pipeline/_targets_mlpscore.R` for `MLPScore`.
+
 # pslongSim 0.3.7
 
 ## Documentation & Separation Guards

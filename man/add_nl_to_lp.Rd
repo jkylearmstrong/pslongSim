@@ -9,7 +9,7 @@ add_nl_to_lp(lp, df, nonlin_coefs)
 \arguments{
 \item{lp}{Numeric vector (linear predictor, modified in place).}
 
-\item{df}{Data frame containing the \code{NL_*} columns.}
+\item{df}{Data frame containing the \code{NL_*} columns or predictor features.}
 
 \item{nonlin_coefs}{Named numeric vector of interaction coefficients.}
 }
@@ -18,7 +18,7 @@ Updated linear predictor \code{lp}.
 }
 \description{
 For each entry in \code{nonlin_coefs}, looks up the corresponding
-\code{NL_<VarA>_<VarB>} column in \code{df} and adds the weighted
-interaction to \code{lp}.
+\code{NL_*} column in \code{df} (or evaluates the term directly) and
+adds the weighted interaction to \code{lp}.
 }
 \keyword{internal}

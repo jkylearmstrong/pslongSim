@@ -11,7 +11,7 @@ generate_longitudinal_data(
   seed = 2026,
   trt_map,
   se_model = list(intercept = -1.2, age = 0, male = 0.05, time_trend = 0.05, lag_se = 1,
-    sd_subject = 0.6),
+    sd_subject = 0.6, comp_feedback = 0),
   adherence_type = c("binary", "beta"),
   adherence_model = list(intercept = -0.3, age = -0.005, male = -0.1, time_trend = 0.04,
     lag_comp = 0.8, se_effect = -0.7, biomarker_effect = 0.25),
@@ -23,9 +23,11 @@ generate_longitudinal_data(
     = 0.4, time_trend = 0.05, sd_subject = 0.7, sd_error = 1),
   non_linear_feature = FALSE,
   nonlin_coefs = c(`Age:SideEffect` = 0.15),
+  nonlin_coefs_adherence = NULL,
   tte_model = list(baseline_logit_h = -3.2, adherence_logHR = -0.5, se_logHR = 0.4,
     biomarker_logHR = -0.25, time_trend_logHR = 0, sd_frailty = 0.6),
-  biom_model = list(intercept = 0, phi = 0.75, sd_innov = 0.5, sd_b0 = 0.75),
+  biom_model = list(intercept = 0, phi = 0.75, sd_innov = 0.5, sd_b0 = 0.75,
+    comp_feedback = 0),
   rho_uv = 0.4,
   rho_uw = 0.2,
   rho_vw = 0.2,
@@ -67,13 +69,18 @@ to the outcome as specified by \code{nonlin_coefs}.  Default
 \code{FALSE} for backward compatibility.}
 
 \item{nonlin_coefs}{Named numeric vector of interaction coefficients.
-Names must be in the form \code{"VarA:VarB"} (e.g.,
-\code{c("Age:SideEffect" = 0.15)}).  Only used when
+Names can be in \code{"VarA:VarB"} form, 3-way interactions (\code{"A:B:C"}),
+step thresholds (\code{"step(Age, 65):SideEffect"}), quadratics (\code{"I(Age^2)"}),
+or logic regions (\code{"xor(SideEffect, Compliant)"}). Only used when
 \code{non_linear_feature = TRUE}.}
+
+\item{nonlin_coefs_adherence}{Named numeric vector of non-linear terms injected
+into the adherence model linear predictor (\code{lp_adh}). Defaults to \code{NULL}.}
 
 \item{tte_model}{List for the TTE hazard model.}
 
-\item{biom_model}{List for the AR(1) biomarker parameters.}
+\item{biom_model}{List for the AR(1) biomarker parameters, including optional
+\code{comp_feedback} coefficient for past treatment compliance.}
 
 \item{rho_uv}{Correlation between outcome and adherence subject effects.}
 
