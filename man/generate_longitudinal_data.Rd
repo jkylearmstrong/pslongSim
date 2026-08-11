@@ -75,12 +75,21 @@ or logic regions (\code{"xor(SideEffect, Compliant)"}). Only used when
 \code{non_linear_feature = TRUE}.}
 
 \item{nonlin_coefs_adherence}{Named numeric vector of non-linear terms injected
-into the adherence model linear predictor (\code{lp_adh}). Defaults to \code{NULL}.}
+into the adherence model linear predictor (\code{lp_adh}). Defaults to \code{NULL}.
+Terms may reference \code{Age}, \code{GenderMale}, \code{VisitNumber},
+\code{Treatment}, and the \strong{current}-visit \code{SideEffect} /
+\code{Biomarker}, plus the \strong{previous}-visit (lagged) \code{Compliant}
+(binary) and \code{Adherence} (continuous) values -- adherence at visit
+\code{t} cannot depend on itself.}
 
 \item{tte_model}{List for the TTE hazard model.}
 
 \item{biom_model}{List for the AR(1) biomarker parameters, including optional
-\code{comp_feedback} coefficient for past treatment compliance.}
+\code{comp_feedback} coefficient for past treatment compliance.
+\code{sd_b0} controls the spread of each subject's persistent baseline
+(a random intercept drawn once per subject); the AR(1) process
+mean-reverts to that subject-specific baseline across all visits,
+not to the population \code{intercept}.}
 
 \item{rho_uv}{Correlation between outcome and adherence subject effects.}
 

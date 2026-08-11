@@ -87,9 +87,18 @@ generate_patient_data_demographic <- function(
 #'   \code{non_linear_feature = TRUE}.
 #' @param nonlin_coefs_adherence Named numeric vector of non-linear terms injected
 #'   into the adherence model linear predictor (\code{lp_adh}). Defaults to \code{NULL}.
+#'   Terms may reference \code{Age}, \code{GenderMale}, \code{VisitNumber},
+#'   \code{Treatment}, and the \strong{current}-visit \code{SideEffect} /
+#'   \code{Biomarker}, plus the \strong{previous}-visit (lagged) \code{Compliant}
+#'   (binary) and \code{Adherence} (continuous) values -- adherence at visit
+#'   \code{t} cannot depend on itself.
 #' @param tte_model List for the TTE hazard model.
 #' @param biom_model List for the AR(1) biomarker parameters, including optional
 #'   \code{comp_feedback} coefficient for past treatment compliance.
+#'   \code{sd_b0} controls the spread of each subject's persistent baseline
+#'   (a random intercept drawn once per subject); the AR(1) process
+#'   mean-reverts to that subject-specific baseline across all visits,
+#'   not to the population \code{intercept}.
 #' @param rho_uv Correlation between outcome and adherence subject effects.
 #' @param rho_uw Correlation between outcome and side-effect subject effects.
 #' @param rho_vw Correlation between adherence and side-effect subject effects.
@@ -251,9 +260,11 @@ generate_longitudinal_data <- function(
   v_i <- uvw[, 2][long_index$PatientRow]
   w_i <- uvw[, 3][long_index$PatientRow]
 
-  # Subject-specific biomarker baseline
+  # Subject-specific biomarker baseline. This is a persistent per-subject
+  # AR(1) mean-reversion target (a random intercept), not just an initial
+  # value -- each subject's trajectory reverts to their own b0_subj[j],
+  # not to the population biom_model$intercept.
   b0_subj <- rnorm(n, mean = biom_model$intercept, sd = biom_model$sd_b0)
-  b0 <- b0_subj[long_index$PatientRow]
 
   # Treatment shifts
   trt_names      <- as.character(trt)
@@ -305,6 +316,7 @@ generate_longitudinal_data <- function(
   for (j in seq_len(n)) {
     prev_se   <- 0L
     prev_comp <- 0L
+    prev_adh  <- 0
     b_prev <- b0_subj[j] +
       rnorm(1, 0, biom_model$sd_innov /
               sqrt(1 - biom_model$phi^2 + 1e-8))
@@ -312,9 +324,10 @@ generate_longitudinal_data <- function(
     for (t in seq_len(T_vis)) {
       idx <- idx_fun(j, t)
 
-      # AR(1) biomarker (with optional treatment-confounder feedback)
-      b_t <- biom_model$intercept +
-        biom_model$phi * (b_prev - biom_model$intercept) +
+      # AR(1) biomarker, mean-reverting to the subject's own persistent
+      # baseline b0_subj[j] (with optional treatment-confounder feedback)
+      b_t <- b0_subj[j] +
+        biom_model$phi * (b_prev - b0_subj[j]) +
         fb_biom * prev_comp +
         rnorm(1, 0, biom_model$sd_innov)
       Biom[idx] <- b_t
@@ -340,7 +353,7 @@ generate_longitudinal_data <- function(
             SideEffect  = se_t,
             Biomarker   = b_t,
             Compliant   = prev_comp,
-            Adherence   = prev_comp,
+            Adherence   = prev_adh,
             Treatment   = trt[idx],
             step        = function(x, cut) as.numeric(x > cut),
             xor         = function(x, y) as.numeric(as.logical(x) != as.logical(y))
@@ -374,6 +387,7 @@ generate_longitudinal_data <- function(
 
       prev_se   <- se_t
       prev_comp <- comp_t
+      prev_adh  <- adh_t
     }
   }
 

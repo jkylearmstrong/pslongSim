@@ -1,7 +1,7 @@
 Package: pslongSim
 Type: Package
 Title: Longitudinal Propensity Score Simulation for Clinical Trials
-Version: 0.3.8
+Version: 0.3.9
 Authors@R: person(
     "J Kyle", "Armstrong",
     role = c("aut", "cre"),
@@ -12,7 +12,7 @@ Description: Simulation framework for longitudinal propensity score models
     to adjust for non-adherence in clinical trials.  Includes a
     non-linear feature generator that produces interaction effects
     detectable by tree-based models but not by linear regression.
-License: GPL-3
+License: GPL-3 | MIT + file LICENSE
 Encoding: UTF-8
 Depends:
     R (>= 4.1.0)
@@ -42,4 +42,3 @@ Config/testthat/edition: 3
 URL: https://github.com/jkylearmstrong/pslongSim, https://jkylearmstrong.github.io/pslongSim
 BugReports: https://github.com/jkylearmstrong/pslongSim/issues
 Config/roxygen2/version: 8.0.0
-Remotes: github::jkylearmstrong-temple/ML-PScore

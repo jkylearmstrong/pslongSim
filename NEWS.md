@@ -1,3 +1,15 @@
+# pslongSim 0.3.9
+
+## Bug Fixes
+
+* **`nonlin_coefs_adherence` variable aliasing**: The per-row environment used to evaluate adherence non-linear terms bound both `Compliant` and `Adherence` to the same lagged binary compliance flag, so a term like `"Age:Adherence"` silently evaluated against the wrong (binary, not continuous) variable. Added a real lagged continuous `prev_adh` tracker so `Adherence` now resolves correctly, and documented the available lagged/current-visit variables for `nonlin_coefs_adherence` terms.
+* **AR(1) biomarker baseline persistence**: The biomarker process mean-reverted to the population `biom_model$intercept` rather than each subject's own `b0_subj` baseline, so `sd_b0`-driven between-subject heterogeneity decayed geometrically (`phi^t`) toward zero over the course of a trial instead of persisting. `b0_subj` is now a true per-subject random intercept that the AR(1) process reverts to at every visit.
+
+## CRAN Readiness
+
+* **License**: switched to dual `GPL-3 | MIT + file LICENSE`, matching the rest of the public package ecosystem.
+* **Removed `Remotes:` field**: CRAN rejects packages with a `Remotes:` field; `MLPScore` remains a `Suggests`-only dependency, installable manually from GitHub when needed.
+
 # pslongSim 0.3.8
 
 ## New DGP Features & Hygiene

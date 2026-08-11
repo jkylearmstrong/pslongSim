@@ -196,3 +196,24 @@ test_that("nonlin_coefs_adherence injects non-linear terms into adherence model"
   expect_false(identical(dat_base$Adherence, dat_nl_adh$Adherence))
 })
 
+test_that("nonlin_coefs_adherence distinguishes lagged Compliant from lagged Adherence", {
+  set.seed(123)
+  demo <- generate_patient_data_demographic(num_patients = 100, n_cohorts = 3)
+  trt_map <- suppressWarnings(define_treatment_map(levels(demo$Treatment)))
+
+  # "Compliant" (binary lag) and "Adherence" (continuous lag) are distinct
+  # inputs to the adherence non-linear term and must not silently alias to
+  # the same value.
+  dat_compliant_term <- generate_longitudinal_data(
+    demo, num_visits = 4, trt_map = trt_map, seed = 123,
+    adherence_type = "beta", outcome_type = "continuous",
+    nonlin_coefs_adherence = c("Age:Compliant" = 0.5)
+  )
+  dat_adherence_term <- generate_longitudinal_data(
+    demo, num_visits = 4, trt_map = trt_map, seed = 123,
+    adherence_type = "beta", outcome_type = "continuous",
+    nonlin_coefs_adherence = c("Age:Adherence" = 0.5)
+  )
+  expect_false(identical(dat_compliant_term$Adherence, dat_adherence_term$Adherence))
+})
+

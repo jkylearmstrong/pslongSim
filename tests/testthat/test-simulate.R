@@ -21,6 +21,34 @@ test_that("simulate produces expected shapes and AR(1) signal", {
   expect_true(is.finite(acf1))
 })
 
+test_that("biomarker AR(1) mean-reverts to a persistent per-subject baseline", {
+  set.seed(7)
+  demo <- generate_patient_data_demographic(num_patients = 400, n_cohorts = 3)
+  trt_map <- suppressWarnings(define_treatment_map(levels(demo$Treatment)))
+
+  dat <- generate_longitudinal_data(
+    demo, num_visits = 10, trt_map = trt_map, seed = 7,
+    adherence_type = "binary", outcome_type = "continuous",
+    biom_model = list(intercept = 0, phi = 0.75, sd_innov = 0.5,
+                      sd_b0 = 2.0, comp_feedback = 0)
+  )
+
+  # If the subject-specific baseline persists (rather than decaying toward
+  # the population intercept via phi^t), between-subject variance of
+  # Biomarker should stay roughly constant across visits...
+  var_by_visit <- tapply(dat$Biomarker, dat$VisitNumber, var)
+  expect_true(min(var_by_visit) / max(var_by_visit) > 0.5,
+              info = "between-subject Biomarker variance should not decay across visits")
+
+  # ...and a subject's early and late biomarker values should stay
+  # correlated well above the phi^(num_visits-1) decay implied by
+  # reversion to a *shared* population mean.
+  v1  <- dat$Biomarker[dat$VisitNumber == 1]
+  v10 <- dat$Biomarker[dat$VisitNumber == 10]
+  expect_true(cor(v1, v10) > 5 * 0.75^9,
+              info = "visit-1/visit-10 Biomarker correlation should reflect a persistent baseline")
+})
+
 test_that("non-linear feature column is present when enabled", {
   set.seed(10)
   demo <- generate_patient_data_demographic(num_patients = 30, n_cohorts = 3)
